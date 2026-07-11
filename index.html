@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECGsmart · Electrocardiograma con IA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --bg2: #181c27; --bg3: #1e2333; --border: #2a3050;
+    --accent: #4f8ef7; --accent2: #7ec8e3; --text: #e8ecf4; --text2: #9aa3bc;
+    --green: #3ecf8e; --yellow: #f5c842; --red: #f05454; --orange: #f59e42;
+    --purple: #9b7fe8; --section-head: #232840;
+  }
+  html.light-mode {
+    --bg: #f4f6f9; --bg2: #ffffff; --bg3: #eef1f6; --border: #d6dce6;
+    --accent: #2f6fe0; --accent2: #1f5fb8; --text: #1a2233; --text2: #5b6478;
+    --green: #1f9d6c; --yellow: #b8860b; --red: #d63b3b; --orange: #d97b1f;
+    --purple: #7457c9; --section-head: #e4e9f2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; min-height: 100vh; }
+
+  /* ══ HEADER (faithfully reused from index.html) ══ */
+  header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 100; }
+  .hdr-icon { width: 38px; height: 38px; background: linear-gradient(135deg, #4f8ef7, #7ec8e3); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .hdr-title { font-size: 16px; font-weight: 700; color: var(--accent2); }
+  .hdr-sub { font-size: 11px; color: var(--text2); margin-top: 1px; }
+  .hdr-extra { font-size: 10px; opacity: 0.85; margin-top: 3px; }
+  .hdr-extra-field[contenteditable]:empty::before { content: attr(data-placeholder); opacity: 0.4; pointer-events: none; font-style: italic; }
+  header .spacer { flex: 1; }
+  .hdr-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 6px 14px; border-radius: 7px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-ghost { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-green { background: var(--green); color: #0f1117; }
+
+  /* ══ HDR INLINE EDIT (faithfully reused from index.html) ══ */
+  .hdr-ew { display:inline-flex; align-items:center; gap:2px; }
+  .hdr-dt { cursor:pointer; }
+  .hdr-dt:hover { opacity:.75; }
+  .hdr-pe { background:none; border:none; cursor:pointer; padding:0 1px; font-size:9px; opacity:.4; line-height:1; transition:opacity .15s; vertical-align:middle; color:inherit; }
+  .hdr-pe:hover { opacity:1; }
+  .hdr-fi { font-size:11px; background:rgba(255,255,255,.09); border:1px solid var(--accent); border-radius:3px; color:var(--text); padding:0 5px; outline:none; min-width:70px; max-width:180px; height:18px; }
+  .hdr-ph { opacity:.38; font-style:italic; }
+
+  /* ══ TOAST (from index.html) ══ */
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #fff; padding: 8px 20px; border-radius: 20px; font-size: 13px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 999; }
+  #toast.show { opacity: 1; }
+
+  /* ══ LAYOUT ══ */
+  .container { max-width: 1160px; margin: 0 auto; padding: 16px; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 14px; }
+  .card-head { background: var(--section-head); padding: 10px 16px; font-size: 13px; font-weight: 700; color: var(--accent2); display: flex; align-items: center; gap: 8px; }
+  .card-body { padding: 16px; }
+  .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  label.fl { display: block; font-size: 11px; color: var(--text2); font-weight: 600; margin-bottom: 4px; }
+  input.in, select.in, textarea.in { width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none; font-family: inherit; }
+  input.in:focus, select.in:focus, textarea.in:focus { border-color: var(--accent); }
+  textarea.in { resize: vertical; min-height: 120px; line-height: 1.55; }
+
+  /* ══ API KEY ══ */
+  .key-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .key-row input { flex: 1; min-width: 220px; }
+  .key-status { font-size: 12px; font-weight: 600; }
+  .key-status.ok { color: var(--green); }
+  .key-status.err { color: var(--red); }
+
+  /* ══ DROPZONE ══ */
+  .dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 36px 20px; text-align: center; cursor: pointer; transition: all .18s; outline: none; }
+  .dropzone:hover, .dropzone:focus { border-color: var(--accent); background: rgba(79,142,247,.06); }
+  .dropzone .dz-icon { font-size: 34px; opacity: .4; }
+  .dropzone .dz-hint { color: var(--text2); margin-top: 8px; font-size: 13px; }
+  .dropzone .dz-sub { color: var(--text2); font-size: 11px; margin-top: 3px; opacity: .8; }
+  .preview-img { max-width: 100%; max-height: 340px; border-radius: 10px; border: 1px solid var(--border); display: block; margin: 0 auto; }
+
+  /* ══ MM GRID (12 derivaciones) ══ */
+  .ecg-a4 { background-color: #fff; background-image:
+      linear-gradient(rgba(240,150,170,.55) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(240,150,170,.55) 1px, transparent 1px),
+      linear-gradient(rgba(248,200,212,.6) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(248,200,212,.6) 1px, transparent 1px);
+    background-size: 25px 25px, 25px 25px, 5px 5px, 5px 5px;
+    border-radius: 8px; padding: 10px; }
+  .ecg-rows { display: grid; grid-template-rows: repeat(4, 1fr); gap: 6px; }
+  .ecg-r { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .ecg-lead { position: relative; background: rgba(255,255,255,.35); border-radius: 4px; min-height: 92px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .ecg-lead .lbl { position: absolute; top: 3px; left: 6px; font-size: 11px; font-weight: 800; color: #b3123b; font-family: 'Space Mono', monospace; }
+  .ecg-lead img { width: 100%; height: 92px; object-fit: contain; }
+  .ecg-lead .empty { color: #d8a; font-size: 12px; }
+
+  /* ══ MEASURES ══ */
+  .meas-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .meas-box { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .meas-box label { display: block; font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+  .meas-box input { width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--border); color: var(--text); font-size: 15px; font-weight: 700; outline: none; padding: 2px 0; }
+  .meas-box input:focus { border-color: var(--accent); }
+  .meas-box .unit { font-size: 10px; color: var(--text2); }
+
+  /* ══ PROGRESS ══ */
+  .progress { display: none; align-items: center; gap: 12px; padding: 16px; }
+  .progress.on { display: flex; }
+  .spinner { width: 20px; height: 20px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .err-banner { display: none; background: rgba(240,84,84,.12); border: 1px solid var(--red); color: var(--red); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; }
+  .err-banner.on { display: block; }
+
+  /* ══ AVISO MODAL ══ */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(5px); }
+  .modal-box { background: var(--bg2); border: 1px solid var(--accent); border-radius: 16px; padding: 30px 34px; max-width: 520px; width: 100%; box-shadow: 0 24px 70px rgba(0,0,0,.55); }
+  .modal-logo { text-align: center; margin-bottom: 16px; }
+  .modal-logo h1 { font-size: 30px; font-weight: 900; color: var(--accent); }
+  .modal-logo h1 span { color: var(--accent2); }
+  .modal-logo p { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1.4px; margin-top: 3px; }
+  .modal-box h2 { color: var(--yellow); font-size: 17px; margin-bottom: 12px; }
+  .modal-box p { color: var(--text2); font-size: 13px; line-height: 1.65; margin-bottom: 10px; }
+  .modal-warn { background: rgba(245,200,66,.08); border: 1px solid rgba(245,200,66,.3); border-radius: 8px; padding: 12px 15px; font-size: 12px; color: var(--yellow); margin: 14px 0; line-height: 1.6; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+  footer { text-align: center; padding: 20px; color: var(--text2); font-size: 11px; border-top: 1px solid var(--border); margin-top: 20px; }
+
+  @media (max-width: 720px) {
+    .grid-5, .meas-grid { grid-template-columns: 1fr 1fr; }
+    .ecg-r { gap: 4px; }
+  }
+
+  /* ══ INTRO CARRUSEL (faithfully reused from index.html) ══ */
+  #intro-overlay { position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px; }
+  #intro-card { background:#181c27;border:1px solid #2a3050;border-radius:18px;width:100%;max-width:650px;height:480px;box-shadow:0 16px 64px rgba(0,0,0,0.8);display:flex;flex-direction:column;overflow:hidden; }
+  .intro-viewport { flex:1;position:relative;overflow:hidden; }
+  .intro-slide { position:absolute;inset:0;padding:36px 40px 20px;opacity:0;transform:translateX(40px);transition:opacity .3s ease,transform .3s ease;pointer-events:none;overflow-y:auto; }
+  .intro-slide.active { opacity:1;transform:translateX(0);pointer-events:auto; }
+  .intro-slide.out { opacity:0;transform:translateX(-40px); }
+  .intro-footer { padding:16px 32px 22px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #2a3050;flex-shrink:0; }
+  .intro-dots { display:flex;gap:8px; }
+  .intro-dot { width:8px;height:8px;border-radius:50%;background:#2a3050;transition:background .25s; }
+  .intro-dot.active { background:#4f8ef7; }
+  .intro-nav { background:transparent;border:1px solid #2a3050;color:#9aa3bc;border-radius:8px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s; }
+  .intro-nav:hover { border-color:#4f8ef7;color:#fff; }
+  .intro-nav.primary { background:#4f8ef7;border-color:#4f8ef7;color:#fff; }
+  .intro-nav.primary:hover { opacity:.88; }
+  .intro-nav:disabled { opacity:.3;cursor:default; }
+  .intro-grid2 { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px; }
+  .intro-card-item { background:#1e2333;border:1px solid #2a3050;border-radius:10px;padding:12px 14px; }
+  .intro-card-item .ic { font-size:20px;margin-bottom:6px; }
+  .intro-card-item .it { font-size:13px;font-weight:700;color:#fff;margin-bottom:3px; }
+  .intro-card-item .id { font-size:11.5px;color:#9aa3bc; }
+  .intro-flow { display:flex;align-items:flex-start;justify-content:center;gap:0;margin-top:20px; }
+  .intro-step { flex:1;text-align:center;padding:0 8px; }
+  .intro-step .is-icon { font-size:28px;background:#1e2333;border:1px solid #2a3050;border-radius:12px;padding:12px;display:inline-block;margin-bottom:8px; }
+  .intro-step .is-title { font-size:13px;font-weight:700;color:#fff;margin-bottom:4px; }
+  .intro-step .is-desc { font-size:11px;color:#9aa3bc;line-height:1.5; }
+  .intro-arrow { align-self:center;color:#4f8ef7;font-size:20px;flex-shrink:0;margin-top:-24px; }
+  .intro-badges { display:flex;flex-wrap:wrap;gap:7px;margin-top:14px; }
+  .intro-badge { background:#1e2333;border:1px solid #2a3050;border-radius:20px;padding:4px 11px;font-size:11.5px;color:#7ec8e3; }
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<!-- ══ AVISO LEGAL (mostrado primero) ══ -->
+<div class="modal-overlay" id="modal-login" style="z-index:1100">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-logo"><h1>ECG<span>smart</span></h1><p>Electrocardiograma asistido por IA</p></div>
+    <h2 style="color:var(--accent)">🔐 Acceso</h2>
+    <p>Ingresá tu contraseña para acceder al sistema.</p>
+    <div style="margin-top:14px">
+      <label class="fl">Contraseña</label>
+      <div style="position:relative">
+        <input class="in" type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password" style="padding-right:38px" onkeydown="if(event.key==='Enter')ecgLogin()">
+        <button type="button" id="login-eye" onclick="toggleLoginPass()" title="Mostrar / ocultar contraseña" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:0;line-height:1;">👁️</button>
+      </div>
+    </div>
+    <div id="login-error" style="display:none;color:var(--red);font-size:12px;margin-top:8px">✕ Contraseña incorrecta. Intentá nuevamente.</div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="ecgLogin()">Ingresar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-aviso">
+  <div class="modal-box">
+    <div class="modal-logo"><h1>ECG<span>smart</span></h1><p>Electrocardiograma asistido por IA</p></div>
+    <h2>⚠️ Aviso Legal y Confidencialidad</h2>
+    <p>Herramienta de apoyo clínico para la lectura y organización de electrocardiogramas. <strong>No reemplaza el juicio clínico del médico.</strong></p>
+    <div class="modal-warn">🔒 Los datos se procesan localmente y se envían únicamente a la API de Anthropic para el análisis de imagen.<br><br>⚕️ Las mediciones y el informe automático son orientativos. La interpretación final corresponde al médico tratante.<br><br>📋 Los desarrolladores no asumen responsabilidad por decisiones médicas basadas en este software.</div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="aceptarAvisoDatos()">✓ Entendido — Continuar</button></div>
+  </div>
+</div>
+
+<!-- ══ INTRO CARRUSEL (faithfully reused from index.html, adapted to ECGsmart) ══ -->
+<div id="intro-overlay" style="display:none">
+  <div id="intro-card">
+    <div class="intro-viewport">
+
+      <!-- SLIDE 1: Bienvenida -->
+      <div class="intro-slide active" id="intro-s1">
+        <div style="text-align:center;padding-top:12px;">
+          <div style="font-size:52px;margin-bottom:14px;">🫀</div>
+          <div style="font-size:26px;font-weight:800;color:#fff;margin-bottom:6px;">ECGsmart</div>
+          <div style="font-size:15px;color:#4f8ef7;font-weight:600;margin-bottom:16px;">Electrocardiograma de 12 derivaciones · IA</div>
+          <div style="font-size:13.5px;color:#9aa3bc;line-height:1.7;max-width:440px;margin:0 auto;">
+            Herramienta clínica que usa inteligencia artificial (Claude Vision) para leer, organizar y analizar electrocardiogramas de 12 derivaciones.
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 2: Cómo usar -->
+      <div class="intro-slide" id="intro-s2">
+        <div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:4px;">Cómo usar ECGsmart</div>
+        <div style="font-size:12.5px;color:#9aa3bc;">Seguí estos pasos para generar tu informe</div>
+        <div class="intro-grid2">
+          <div class="intro-card-item">
+            <div class="ic">🔑</div>
+            <div class="it">API Key</div>
+            <div class="id">Ingresá tu clave de Anthropic (se guarda solo en tu navegador)</div>
+          </div>
+          <div class="intro-card-item">
+            <div class="ic">👤</div>
+            <div class="it">Paciente</div>
+            <div class="id">Completá nombre, documento, edad, sexo y fecha del estudio</div>
+          </div>
+          <div class="intro-card-item">
+            <div class="ic">📷</div>
+            <div class="it">Imagen</div>
+            <div class="id">Subí o pegá (Ctrl/Cmd+V) la foto o escaneo del ECG</div>
+          </div>
+          <div class="intro-card-item">
+            <div class="ic">🤖</div>
+            <div class="it">Analizar</div>
+            <div class="id">Claude Vision recorta las derivaciones y calcula las mediciones</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 3: Capacidades de análisis -->
+      <div class="intro-slide" id="intro-s3">
+        <div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:4px;">Capacidades de análisis</div>
+        <div style="font-size:12.5px;color:#9aa3bc;">Del papel al informe estructurado</div>
+        <div class="intro-flow">
+          <div class="intro-step">
+            <div class="is-icon">🔬</div>
+            <div class="is-title">Detección</div>
+            <div class="is-desc">Detecta y recorta las 12 derivaciones (I, II, III, aVR, aVL, aVF, V1–V6)</div>
+          </div>
+          <div class="intro-arrow">→</div>
+          <div class="intro-step">
+            <div class="is-icon">📏</div>
+            <div class="is-title">Mediciones</div>
+            <div class="is-desc">Estima frecuencia, PR, QRS, QT/QTc y eje eléctrico</div>
+          </div>
+          <div class="intro-arrow">→</div>
+          <div class="intro-step">
+            <div class="is-icon">⬇️</div>
+            <div class="is-title">Informe · PDF</div>
+            <div class="is-desc">Redacta un informe orientativo y exporta un PDF prolijo</div>
+          </div>
+        </div>
+        <div class="intro-badges">
+          <span class="intro-badge">Grilla estándar A4</span><span class="intro-badge">Grilla milimetrada</span>
+          <span class="intro-badge">Informe editable</span><span class="intro-badge">Firma del médico</span>
+        </div>
+      </div>
+
+      <!-- SLIDE 4: Motivacional / listo -->
+      <div class="intro-slide" id="intro-s4">
+        <div style="text-align:center;padding-top:24px;">
+          <div style="font-size:56px;margin-bottom:16px;">⚡</div>
+          <div style="font-size:24px;font-weight:800;color:#fff;margin-bottom:8px;">¡Todo listo!</div>
+          <div style="font-size:15px;color:#4f8ef7;font-weight:600;margin-bottom:20px;">Comenzá tu primer trazado</div>
+          <div style="font-size:13.5px;color:#9aa3bc;line-height:1.8;max-width:420px;margin:0 auto 32px;">
+            “La lectura del ECG es un arte que se perfecciona con cada trazado.”<br><br>ECGsmart te acompaña — la decisión clínica siempre es tuya.
+          </div>
+          <button onclick="closeIntro()" style="padding:13px 48px;background:#4f8ef7;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;transition:opacity .15s;" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">Comenzar</button>
+        </div>
+      </div>
+
+    </div><!-- /viewport -->
+
+    <div class="intro-footer">
+      <button class="intro-nav" id="intro-prev" onclick="introNav(-1)" disabled>← Anterior</button>
+      <div class="intro-dots">
+        <div class="intro-dot active" id="dot-0"></div>
+        <div class="intro-dot" id="dot-1"></div>
+        <div class="intro-dot" id="dot-2"></div>
+        <div class="intro-dot" id="dot-3"></div>
+      </div>
+      <button class="intro-nav primary" id="intro-next" onclick="introNav(1)">Siguiente →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ HEADER (faithfully reused from index.html, adapted to ECGsmart) ══ -->
+<header>
+  <div class="hdr-icon">🫀</div>
+  <div>
+    <div class="hdr-title">ECGsmart</div>
+    <div class="hdr-sub">
+      <!-- hidden contenteditable spans keep sv() and saveMedico() working -->
+      <span id="med-nombre" contenteditable="true" onblur="saveMedico()" style="display:none;">Dr. Maicol Dos Santos</span>
+      <span class="hdr-ew">
+        <span id="med-nombre-disp" class="hdr-dt" onclick="hdrEdit('med-nombre')">Dr. Maicol Dos Santos</span>
+        <input id="med-nombre-inp" class="hdr-fi" type="text" style="display:none">
+        <button class="hdr-pe" onclick="hdrEdit('med-nombre')" title="Editar nombre">✏️</button>
+      </span>
+      &nbsp;·&nbsp;
+      <span id="med-matricula" contenteditable="true" onblur="saveMedico()" style="display:none;">CJPP 129296</span>
+      <span class="hdr-ew">
+        <span id="med-matricula-disp" class="hdr-dt" onclick="hdrEdit('med-matricula')">CJPP 129296</span>
+        <input id="med-matricula-inp" class="hdr-fi" type="text" style="display:none">
+        <button class="hdr-pe" onclick="hdrEdit('med-matricula')" title="Editar matrícula">✏️</button>
+      </span>
+      &nbsp;·&nbsp;
+      <span id="med-lugar" contenteditable="true" onblur="saveMedico()" style="display:none;">Artigas, Uruguay</span>
+      <span class="hdr-ew">
+        <span id="med-lugar-disp" class="hdr-dt" onclick="hdrEdit('med-lugar')">Artigas, Uruguay</span>
+        <input id="med-lugar-inp" class="hdr-fi" type="text" style="display:none">
+        <button class="hdr-pe" onclick="hdrEdit('med-lugar')" title="Editar ciudad/lugar">✏️</button>
+      </span>
+      &nbsp;·&nbsp;
+      <span id="med-centro" contenteditable="true" onblur="saveMedico()" style="display:none;"></span>
+      <span class="hdr-ew">
+        <span id="med-centro-disp" class="hdr-dt hdr-ph" onclick="hdrEdit('med-centro')">Centro/Institución...</span>
+        <input id="med-centro-inp" class="hdr-fi" type="text" style="display:none">
+        <button class="hdr-pe" onclick="hdrEdit('med-centro')" title="Editar centro/institución">✏️</button>
+      </span>
+      &nbsp;·&nbsp;
+      <button type="button" class="hdr-pe" onclick="firmaOpen()" title="Editar firma del centro" style="font-size:11px;">✏️ Firma</button>
+    </div>
+    <div class="hdr-sub hdr-extra" id="hdr-extra">
+      <span id="hdr-esp-item"><span id="med-especialidad" class="hdr-extra-field" contenteditable="true" data-placeholder="Especialidad" title="Click para editar especialidad" onclick="this.focus()" onblur="saveMedico()" style="cursor:pointer;border-bottom:1px dashed var(--accent2);outline:none;"></span></span><span id="hdr-sep-1" class="hdr-sep">&nbsp;·&nbsp;</span><span id="hdr-dir-item"><span id="med-direccion" class="hdr-extra-field" contenteditable="true" data-placeholder="Dirección del consultorio" title="Click para editar dirección" onclick="this.focus()" onblur="saveMedico()" style="cursor:pointer;border-bottom:1px dashed var(--accent2);outline:none;"></span></span><span id="hdr-sep-2" class="hdr-sep">&nbsp;·&nbsp;</span><span id="hdr-tel-item"><span id="med-telefono" class="hdr-extra-field" contenteditable="true" data-placeholder="Teléfono" title="Click para editar teléfono" onclick="this.focus()" onblur="saveMedico()" style="cursor:pointer;border-bottom:1px dashed var(--accent2);outline:none;"></span></span>
+    </div>
+  </div>
+  <div id="logo-centro-wrap" onclick="logoClick(event)" title="Logo del centro (click para cargar)" style="position:relative;min-width:46px;height:40px;padding:0 6px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex-shrink:0;background:var(--bg2);margin-left:12px;">
+    <div id="logo-centro-ph" style="display:flex;flex-direction:column;align-items:center;line-height:1.1;color:var(--text2);font-size:9px;gap:1px;"><span style="font-size:15px;">＋</span>Logo</div>
+    <img id="logo-centro-img" style="display:none;max-width:130px;max-height:40px;object-fit:contain;" alt="logo del centro">
+    <button id="logo-centro-del" type="button" onclick="logoDelete(event)" title="Quitar logo" style="display:none;position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;border:none;background:var(--red);color:#fff;font-size:10px;line-height:1;cursor:pointer;padding:0;">✕</button>
+  </div>
+  <input type="file" id="logo-centro-file" accept="image/*" style="display:none" onchange="logoChosen(event)">
+  <div class="spacer"></div>
+  <div class="hdr-btns">
+    <button class="btn btn-ghost" id="theme-toggle-btn" onclick="toggleTheme()" title="Cambiar modo día/noche">🌙 Noche</button>
+    <button class="btn btn-ghost" onclick="limpiar()">🗑 Limpiar</button>
+    <button class="btn btn-primary" onclick="generarInforme()">📝 Informe</button>
+    <button class="btn btn-save" onclick="guardar()" style="background:#6c5ce7;color:#fff;">💾 Guardar</button>
+    <span style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;">
+      <button class="btn btn-green" onclick="exportPDF()">⬇️ PDF</button>
+      <span style="display:inline-flex;gap:4px;" title="Color del PDF">
+        <span class="pdf-color-sw" data-idx="1" onclick="setPdfColor(1)" title="Azul"    style="width:20px;height:20px;border-radius:5px;background:#1a3a5c;cursor:pointer;box-sizing:border-box;border:1px solid rgba(255,255,255,0.25);"></span>
+        <span class="pdf-color-sw" data-idx="2" onclick="setPdfColor(2)" title="Verde"   style="width:20px;height:20px;border-radius:5px;background:#1a5c3a;cursor:pointer;box-sizing:border-box;border:1px solid rgba(255,255,255,0.25);"></span>
+        <span class="pdf-color-sw" data-idx="3" onclick="setPdfColor(3)" title="Violeta" style="width:20px;height:20px;border-radius:5px;background:#4a1a7a;cursor:pointer;box-sizing:border-box;border:1px solid rgba(255,255,255,0.25);"></span>
+        <span class="pdf-color-sw" data-idx="4" onclick="setPdfColor(4)" title="Bordo"   style="width:20px;height:20px;border-radius:5px;background:#7B2D42;cursor:pointer;box-sizing:border-box;border:1px solid rgba(255,255,255,0.25);"></span>
+      </span>
+      <select id="pdf-fmt-sel" title="Formato nombre archivo PDF"
+        style="font-size:9px;padding:1px 3px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:var(--bg3);color:var(--text2);cursor:pointer;max-width:110px;"
+        onchange="localStorage.setItem('ecgsmart_filename_fmt', this.value)">
+        <option value="0">ECGsmart_Paciente_Fecha</option>
+        <option value="1">Paciente_ECG_Fecha</option>
+        <option value="2">ECG_Fecha</option>
+      </select>
+    </span>
+    <button class="btn btn-ghost" onclick="showIntro()" title="Ayuda / Guía de uso" style="padding:6px 10px;font-size:14px;">?</button>
+    <button class="btn btn-ghost" onclick="cerrarSesion()" title="Cerrar sesión">🔒 Cerrar</button>
+  </div>
+</header>
+
+<!-- Panel de firma por centro (faithfully reused from index.html) -->
+<div id="firma-panel" style="display:none;position:fixed;top:64px;left:16px;z-index:250;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:0 12px 40px rgba(0,0,0,0.5);width:330px;max-width:calc(100vw - 32px);">
+  <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text);">🖊️ Firma del centro</div>
+  <div class="fg" style="margin-bottom:8px;"><label style="font-size:11px;">Nombre *</label><input class="in" type="text" id="firma-nombre" placeholder="Dr. ..." style="width:100%;"></div>
+  <div class="fg" style="margin-bottom:10px;"><label style="font-size:11px;">CJPP *</label><input class="in" type="text" id="firma-cjpp" placeholder="CJPP ..." style="width:100%;"></div>
+  <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Campos opcionales (marcar para incluir)</div>
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><input type="checkbox" id="firma-esp-on" title="Incluir especialidad"><input class="in" type="text" id="firma-esp" placeholder="Especialidad" style="flex:1;"></div>
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><input type="checkbox" id="firma-dir-on" title="Incluir dirección"><input class="in" type="text" id="firma-dir" placeholder="Dirección" style="flex:1;"></div>
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><input type="checkbox" id="firma-tel-on" title="Incluir teléfono"><input class="in" type="text" id="firma-tel" placeholder="Teléfono" style="flex:1;"></div>
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;"><input type="checkbox" id="firma-email-on" title="Incluir email"><input class="in" type="text" id="firma-email" placeholder="Email" style="flex:1;"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;">
+    <button type="button" class="btn btn-ghost" onclick="firmaCerrar()">Cerrar</button>
+    <button type="button" class="btn btn-primary" onclick="firmaGuardar()">Guardar</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="err-banner" id="errBanner"></div>
+
+  <!-- API KEY -->
+  <div class="card">
+    <div class="card-head">🔑 API Key de Anthropic</div>
+    <div class="card-body">
+      <div class="key-row">
+        <input class="in" type="password" id="apiKey" placeholder="sk-ant-api03-..." autocomplete="off">
+        <button class="btn btn-primary" onclick="saveApiKey()">Guardar y verificar</button>
+        <span class="key-status" id="keyStatus"></span>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px">Se guarda localmente en tu navegador (clave <code>ecgsmart_api_key</code>). Nunca se envía a otros servidores.</div>
+    </div>
+  </div>
+
+  <!-- DATOS PACIENTE -->
+  <div class="card">
+    <div class="card-head">👤 Datos del paciente</div>
+    <div class="card-body">
+      <div class="grid-5">
+        <div><label class="fl">Nombre y apellido</label><input class="in" id="pac-nombre" placeholder="Paciente"></div>
+        <div><label class="fl">C.I. / Documento</label><input class="in" id="pac-ci" placeholder="CI"></div>
+        <div><label class="fl">Edad</label><input class="in" id="pac-edad" type="number" placeholder="años"></div>
+        <div><label class="fl">Sexo</label><select class="in" id="pac-sexo"><option value="">—</option><option value="M">Masculino</option><option value="F">Femenino</option></select></div>
+        <div><label class="fl">Fecha del estudio</label><input class="in" id="pac-fecha" type="date"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUBIR ECG -->
+  <div class="card">
+    <div class="card-head">🖼️ Imagen del ECG</div>
+    <div class="card-body">
+      <div class="dropzone" id="dropzone" tabindex="0" onclick="document.getElementById('ecgFile').click()">
+        <div class="dz-icon">📈</div>
+        <div class="dz-hint">Clic para subir o <strong>Ctrl/Cmd + V</strong> para pegar la foto del ECG</div>
+        <div class="dz-sub">JPG · PNG · foto o escaneo de 12 derivaciones</div>
+      </div>
+      <input type="file" id="ecgFile" accept="image/*" style="display:none" onchange="fileChosen(event)">
+      <div id="previewWrap" style="display:none;margin-top:14px">
+        <img id="previewImg" class="preview-img" alt="ECG">
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn-green" id="btnAnalyze" onclick="analyze()" disabled>🤖 Analizar con Claude Vision</button>
+          <button class="btn btn-ghost" onclick="clearImage()">🗑 Quitar imagen</button>
+        </div>
+      </div>
+      <div class="progress" id="progress"><div class="spinner"></div><span id="progressMsg">Analizando ECG con Claude Vision…</span></div>
+    </div>
+  </div>
+
+  <!-- RESULTADO -->
+  <div class="card" id="resultCard" style="display:none">
+    <div class="card-head">🫀 Grilla de 12 derivaciones — Layout estándar</div>
+    <div class="card-body">
+      <div class="ecg-a4" id="ecgGrid"></div>
+    </div>
+  </div>
+
+  <!-- MEDICIONES -->
+  <div class="card" id="measCard" style="display:none">
+    <div class="card-head">📏 Mediciones automáticas <span style="font-size:10px;color:var(--text2);font-weight:400">(editables)</span></div>
+    <div class="card-body">
+      <div class="meas-grid">
+        <div class="meas-box"><label>Frecuencia</label><input id="meas-fc"><span class="unit">lpm</span></div>
+        <div class="meas-box"><label>Intervalo PR</label><input id="meas-pr"><span class="unit">ms</span></div>
+        <div class="meas-box"><label>Duración QRS</label><input id="meas-qrs"><span class="unit">ms</span></div>
+        <div class="meas-box"><label>QT / QTc</label><input id="meas-qt"><span class="unit">ms</span></div>
+        <div class="meas-box"><label>Eje eléctrico</label><input id="meas-eje"><span class="unit">°</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INFORME -->
+  <div class="card" id="reportCard" style="display:none">
+    <div class="card-head">📝 Informe / Conclusión <span style="font-size:10px;color:var(--text2);font-weight:400">(opcional — editable)</span></div>
+    <div class="card-body">
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="usarInformeIA()" id="btnUsarIA">🤖 Usar informe automático de Claude</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('reportText').value=''">Limpiar</button>
+      </div>
+      <textarea class="in" id="reportText" placeholder="Escriba aquí la conclusión, o use el informe automático generado por Claude Vision. Este casillero es opcional."></textarea>
+    </div>
+  </div>
+
+</div>
+
+<footer>© 2026 Dr. M. D. S. y col. · ECGsmart · Todos los derechos reservados · Uso clínico exclusivo</footer>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   ECGsmart — chrome components reused from index.html (adapted),
+   ECG-specific logic preserved from the original ecgsmart.html.
+   All localStorage keys are ecgsmart-scoped to avoid collision.
+   ══════════════════════════════════════════════════════════════════════ */
+
+const LEADS = ['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'];
+const ROWS = [['I','II','III'],['aVR','aVL','aVF'],['V1','V2','V3'],['V4','V5','V6']];
+// PDF accent themes (from index.html): 1 Azul, 2 Verde, 3 Violeta, 4 Bordo
+const _temaPDF = { '1':[26,58,92], '2':[26,92,58], '3':[74,26,122], '4':[123,45,66] };
+
+let S = {
+  apiKey: localStorage.getItem('ecgsmart_api_key') || '',
+  img: null,          // {base64, blob, mime}
+  crops: {},          // lead -> dataURL
+  iaReport: '',
+  analyzed: false,
+};
+
+/* ══ HELPERS (from index.html) ══ */
+function sv(id) {
+  const el = document.getElementById(id);
+  if (!el) return '';
+  if (el.contentEditable === 'true') return el.textContent.trim();
+  return el.value || '';
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+/* ══ INIT ══ */
+document.addEventListener('DOMContentLoaded', () => {
+  initLogin();
+  document.getElementById('pac-fecha').valueAsDate = new Date();
+  loadMedico();
+  initHdrEditable();
+  renderLogoCentro();
+  firmaLoad();
+  loadTheme();
+  initPdfColor();
+  if (S.apiKey) { document.getElementById('apiKey').value = S.apiKey; setKeyStatus('ok', '✓ Guardada'); }
+  document.addEventListener('paste', onPaste);
+});
+
+/* ══════════════ LOGIN (sesión válida 8 horas) ══════════════ */
+const ECG_LOGIN_PASS = 'maicolecg1', ECG_LOGIN_TTL = 8*60*60*1000, ECG_LOGIN_KEY = 'ecgsmart_login_expira';
+function ecgSesionValida() { const exp = parseInt(localStorage.getItem(ECG_LOGIN_KEY) || '0', 10); return exp > Date.now(); }
+function initLogin() {
+  const lg = document.getElementById('modal-login'), av = document.getElementById('modal-aviso');
+  if (ecgSesionValida()) { if (lg) lg.style.display = 'none'; }
+  else { if (av) av.style.display = 'none'; if (lg) { lg.style.display = 'flex'; const p = document.getElementById('login-pass'); if (p) p.focus(); } }
+}
+function toggleLoginPass() {
+  const inp = document.getElementById('login-pass'), eye = document.getElementById('login-eye');
+  if (!inp) return;
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  if (eye) eye.textContent = show ? '🙈' : '👁️';
+  inp.focus();
+}
+function ecgLogin() {
+  const inp = document.getElementById('login-pass'), err = document.getElementById('login-error');
+  if (inp && inp.value === ECG_LOGIN_PASS) {
+    localStorage.setItem(ECG_LOGIN_KEY, String(Date.now() + ECG_LOGIN_TTL));
+    document.getElementById('modal-login').style.display = 'none';
+    const av = document.getElementById('modal-aviso'); if (av) av.style.display = 'flex';
+  } else { if (err) err.style.display = 'block'; if (inp) { inp.value = ''; inp.focus(); } }
+}
+
+/* ══════════════ AVISO / SESIÓN ══════════════ */
+function aceptarAvisoDatos() {
+  document.getElementById('modal-aviso').style.display = 'none';
+  // Aviso → Splash → App
+  if (localStorage.getItem('ecgsmart_intro_seen') === '1') {
+    // already seen: go straight to app, but still allow via "?"
+    return;
+  }
+  showIntro();
+}
+function cerrarSesion() {
+  document.getElementById('modal-aviso').style.display = 'flex';
+}
+window.cerrarSesion = cerrarSesion;
+
+/* ══════════════ INTRO CARRUSEL (faithfully reused from index.html) ══════════════ */
+var _introSlide = 0;
+var _introTotal = 4;
+function introNav(dir) {
+  var slides = document.querySelectorAll('.intro-slide');
+  var dots   = document.querySelectorAll('.intro-dot');
+  slides[_introSlide].classList.remove('active');
+  slides[_introSlide].classList.add('out');
+  setTimeout(function(){ slides[_introSlide < _introTotal ? _introSlide : 0].classList.remove('out'); }, 300);
+  _introSlide = Math.max(0, Math.min(_introTotal - 1, _introSlide + dir));
+  slides[_introSlide].classList.add('active');
+  dots.forEach(function(d,i){ d.classList.toggle('active', i === _introSlide); });
+  document.getElementById('intro-prev').disabled = _introSlide === 0;
+  var nextBtn = document.getElementById('intro-next');
+  if (_introSlide === _introTotal - 1) {
+    nextBtn.textContent = 'Comenzar ✓';
+    nextBtn.onclick = closeIntro;
+  } else {
+    nextBtn.textContent = 'Siguiente →';
+    nextBtn.onclick = function(){ introNav(1); };
+  }
+}
+function showIntro() {
+  localStorage.removeItem('ecgsmart_intro_seen');
+  _introSlide = 0;
+  document.querySelectorAll('.intro-slide').forEach(function(s){ s.classList.remove('active','out'); });
+  document.querySelectorAll('.intro-dot').forEach(function(d,i){ d.classList.toggle('active', i===0); });
+  document.getElementById('intro-s1').classList.add('active');
+  document.getElementById('intro-prev').disabled = true;
+  var nb = document.getElementById('intro-next'); nb.textContent = 'Siguiente →'; nb.onclick = function(){ introNav(1); };
+  document.getElementById('intro-overlay').style.display = 'flex';
+}
+function closeIntro() {
+  document.getElementById('intro-overlay').style.display = 'none';
+  localStorage.setItem('ecgsmart_intro_seen', '1');
+}
+
+/* ══════════════ MODO DÍA / NOCHE (faithfully reused from index.html) ══════════════ */
+function toggleTheme() {
+  const isLight = document.documentElement.classList.toggle('light-mode');
+  localStorage.setItem('ecgsmart_theme', isLight ? 'light' : 'dark');
+  updateThemeBtn(isLight);
+}
+function updateThemeBtn(isLight) {
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.textContent = isLight ? '☀️ Día' : '🌙 Noche';
+}
+function loadTheme() {
+  const saved = localStorage.getItem('ecgsmart_theme');
+  const isLight = saved === 'light';
+  if (isLight) document.documentElement.classList.add('light-mode');
+  updateThemeBtn(isLight);
+}
+window.toggleTheme = toggleTheme;
+
+/* ══════════════ MÉDICO — inline pencil editors (faithfully reused from index.html) ══════════════ */
+function updateHdrExtra() {
+  const get = id => (document.getElementById(id)?.textContent || '').trim();
+  const esp = get('med-especialidad'), dir = get('med-direccion'), tel = get('med-telefono');
+  const show = (id, v) => { const el=document.getElementById(id); if(el) el.style.display=v?'':'none'; };
+  show('hdr-esp-item', esp);
+  show('hdr-sep-1',    esp && dir);
+  show('hdr-dir-item', dir);
+  show('hdr-sep-2',    (esp||dir) && tel);
+  show('hdr-tel-item', tel);
+  const row = document.getElementById('hdr-extra');
+  if (row) row.style.display = (esp||dir||tel) ? '' : 'none';
+}
+function loadMedico() {
+  const ids = ['med-nombre','med-matricula','med-lugar','med-especialidad','med-direccion','med-telefono'];
+  ids.forEach(id => {
+    const val = localStorage.getItem('ecgsmart_' + id.replace(/-/g,'_'));
+    const el = document.getElementById(id);
+    if (el && val) el.textContent = val;
+  });
+  updateHdrExtra();
+}
+function saveMedico() {
+  ['med-nombre','med-matricula','med-lugar','med-especialidad','med-direccion','med-telefono'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) localStorage.setItem('ecgsmart_' + id.replace(/-/g,'_'), el.textContent);
+  });
+  updateHdrExtra();
+}
+['med-nombre','med-matricula','med-lugar','med-especialidad','med-direccion','med-telefono'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('blur', () => { saveMedico(); toast('✅ Datos del médico guardados'); });
+});
+
+function hdrEdit(field) {
+  const disp   = document.getElementById(field + '-disp');
+  const inp    = document.getElementById(field + '-inp');
+  const hidden = document.getElementById(field);
+  if (!disp || !inp) return;
+  if (inp.style.display !== 'none') { inp.focus(); return; }
+
+  inp.value = hidden ? hidden.textContent.trim() : '';
+  disp.style.display = 'none';
+  inp.style.display  = 'inline';
+  inp.focus();
+  inp.select();
+
+  const LABELS = {'med-nombre':'Nombre','med-matricula':'Matrícula','med-lugar':'Ciudad','med-centro':'Centro'};
+  const PH     = {'med-centro':'Centro/Institución...'};
+
+  function save() {
+    inp.onblur    = null;
+    inp.onkeydown = null;
+    const val = inp.value.trim();
+    inp.style.display  = 'none';
+    disp.style.display = '';
+    if (val) {
+      disp.textContent = val;
+      disp.classList.remove('hdr-ph');
+      if (hidden) hidden.textContent = val;
+    } else if (PH[field]) {
+      disp.textContent = PH[field];
+      disp.classList.add('hdr-ph');
+      if (hidden) hidden.textContent = '';
+    }
+    localStorage.setItem('ecgsmart_' + field.replace(/-/g,'_'), val);
+    if (val && LABELS[field]) toast('✅ ' + LABELS[field] + ' guardado');
+  }
+
+  inp.onblur    = save;
+  inp.onkeydown = function(e) {
+    if (e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape') { inp.onblur=null; inp.style.display='none'; disp.style.display=''; }
+  };
+}
+function initHdrEditable() {
+  ['med-nombre','med-matricula','med-lugar','med-centro'].forEach(function(field) {
+    const lsKey  = 'ecgsmart_' + field.replace(/-/g,'_');
+    const hidden = document.getElementById(field);
+    const disp   = document.getElementById(field + '-disp');
+    if (!disp) return;
+    const stored = localStorage.getItem(lsKey);
+    const val    = (stored !== null && stored !== '') ? stored
+                 : (hidden ? hidden.textContent.trim() : '');
+    const PH = {'med-centro':'Centro/Institución...'};
+    if (val) {
+      disp.textContent = val;
+      disp.classList.remove('hdr-ph');
+      if (hidden) hidden.textContent = val;
+    } else if (PH[field]) {
+      disp.textContent = PH[field];
+      disp.classList.add('hdr-ph');
+    }
+  });
+}
+window.hdrEdit = hdrEdit;
+
+/* ══════════════ LOGO DEL CENTRO (reused from index.html, scoped/simple) ══════════════ */
+function logoClick(e) { if (e && e.target && e.target.id === 'logo-centro-del') return; document.getElementById('logo-centro-file').click(); }
+function logoChosen(e) {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try { localStorage.setItem('ecgsmart_logo', r.result); } catch(err) { alert('La imagen del logo es demasiado grande para guardarse en este dispositivo.'); return; } renderLogoCentro(); toast('✅ Logo guardado'); };
+  r.readAsDataURL(f);
+  e.target.value = '';
+}
+function logoDelete(e) { if (e) e.stopPropagation(); localStorage.removeItem('ecgsmart_logo'); renderLogoCentro(); }
+function renderLogoCentro() {
+  const img = document.getElementById('logo-centro-img');
+  const ph  = document.getElementById('logo-centro-ph');
+  const del = document.getElementById('logo-centro-del');
+  if (!img || !ph || !del) return;
+  const data = localStorage.getItem('ecgsmart_logo');
+  if (data) { img.src = data; img.style.display = 'block'; ph.style.display = 'none'; del.style.display = 'block'; }
+  else { img.removeAttribute('src'); img.style.display = 'none'; ph.style.display = 'flex'; del.style.display = 'none'; }
+}
+window.logoClick = logoClick; window.logoChosen = logoChosen; window.logoDelete = logoDelete;
+
+/* ══════════════ FIRMA DEL CENTRO (faithfully reused from index.html) ══════════════ */
+function firmaKey() { return 'ecgsmart_firma_centro'; }
+function firmaRead() { try { return JSON.parse(localStorage.getItem(firmaKey()) || 'null'); } catch (e) { return null; } }
+function firmaOpen() { firmaPopulatePanel(); const p = document.getElementById('firma-panel'); if (p) p.style.display = 'block'; }
+function firmaCerrar() { const p = document.getElementById('firma-panel'); if (p) p.style.display = 'none'; }
+function firmaPopulatePanel() {
+  const f = firmaRead() || {
+    nombre: sv('med-nombre'), cjpp: sv('med-matricula'),
+    esp: { on: !!sv('med-especialidad'), val: sv('med-especialidad') },
+    dir: { on: !!sv('med-direccion'),    val: sv('med-direccion') },
+    tel: { on: !!sv('med-telefono'),     val: sv('med-telefono') },
+    email: { on: false, val: '' }
+  };
+  const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  setV('firma-nombre', f.nombre); setV('firma-cjpp', f.cjpp);
+  const setOpt = (k, onId, valId) => { const o = f[k] || { on: false, val: '' }; const c = document.getElementById(onId); if (c) c.checked = !!o.on; setV(valId, o.val); };
+  setOpt('esp', 'firma-esp-on', 'firma-esp');
+  setOpt('dir', 'firma-dir-on', 'firma-dir');
+  setOpt('tel', 'firma-tel-on', 'firma-tel');
+  setOpt('email', 'firma-email-on', 'firma-email');
+}
+function firmaGuardar() {
+  const nombre = (document.getElementById('firma-nombre').value || '').trim();
+  const cjpp   = (document.getElementById('firma-cjpp').value || '').trim();
+  if (!nombre || !cjpp) { alert('Nombre y CJPP son obligatorios.'); return; }
+  const opt = (onId, valId) => ({ on: !!document.getElementById(onId).checked, val: (document.getElementById(valId).value || '').trim() });
+  const f = { nombre, cjpp, esp: opt('firma-esp-on', 'firma-esp'), dir: opt('firma-dir-on', 'firma-dir'), tel: opt('firma-tel-on', 'firma-tel'), email: opt('firma-email-on', 'firma-email') };
+  localStorage.setItem(firmaKey(), JSON.stringify(f));
+  firmaSyncToHeader(f);
+  firmaCerrar();
+  toast('✅ Firma guardada');
+}
+function firmaSyncToHeader(f) {
+  const put = (id, val) => {
+    const el = document.getElementById(id); if (el) el.textContent = val || '';
+    localStorage.setItem('ecgsmart_' + id.replace(/-/g, '_'), val || '');
+    const disp = document.getElementById(id + '-disp');
+    if (disp && val) { disp.textContent = val; disp.classList.remove('hdr-ph'); }
+  };
+  put('med-nombre', f.nombre);
+  put('med-matricula', f.cjpp);
+  put('med-especialidad', f.esp && f.esp.on ? f.esp.val : '');
+  put('med-direccion',    f.dir && f.dir.on ? f.dir.val : '');
+  put('med-telefono',     f.tel && f.tel.on ? f.tel.val : '');
+  if (typeof updateHdrExtra === 'function') updateHdrExtra();
+}
+function firmaLoad() {
+  const f = firmaRead();
+  if (f) firmaSyncToHeader(f);
+  const p = document.getElementById('firma-panel');
+  if (p && p.style.display === 'block') firmaPopulatePanel();
+}
+window.firmaOpen = firmaOpen; window.firmaCerrar = firmaCerrar; window.firmaGuardar = firmaGuardar;
+
+/* ══════════════ PDF COLOR SELECTOR (faithfully reused from index.html) ══════════════ */
+function setPdfColor(idx) {
+  try { localStorage.setItem('ecgsmart_pdf_color', idx); } catch(e){}
+  document.querySelectorAll('.pdf-color-sw').forEach(sw => {
+    const on = sw.getAttribute('data-idx') === String(idx);
+    sw.style.border = on ? '3px solid #ffffff' : '1px solid rgba(255,255,255,0.25)';
+    sw.style.boxShadow = on ? '0 0 0 1px rgba(0,0,0,0.45)' : 'none';
+  });
+}
+function initPdfColor() {
+  let saved = '1';
+  try { saved = localStorage.getItem('ecgsmart_pdf_color') || '1'; } catch(e){}
+  setPdfColor(saved);
+  const _fmtEl = document.getElementById('pdf-fmt-sel');
+  if (_fmtEl) _fmtEl.value = localStorage.getItem('ecgsmart_filename_fmt') || '0';
+}
+window.setPdfColor = setPdfColor;
+
+/* ══════════════ HEADER BUTTONS: Limpiar / Informe / Guardar ══════════════ */
+function limpiar() {
+  if (!confirm('¿Limpiar los datos del paciente, la imagen y los resultados?')) return;
+  ['pac-nombre','pac-ci','pac-edad'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('pac-sexo').value = '';
+  document.getElementById('pac-fecha').valueAsDate = new Date();
+  ['meas-fc','meas-pr','meas-qrs','meas-qt','meas-eje'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('reportText').value = '';
+  clearImage();
+  hideError();
+  toast('🗑 Datos limpiados');
+}
+function generarInforme() {
+  // Para ECG: si hay informe automático y el textarea está vacío, precargar; luego enfocar la sección
+  if (!S.analyzed) { showError('Analizá primero una imagen de ECG para generar el informe.'); return; }
+  const ta = document.getElementById('reportText');
+  if (ta && !ta.value.trim() && S.iaReport) ta.value = S.iaReport;
+  document.getElementById('reportCard').style.display = 'block';
+  document.getElementById('reportCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('📝 Informe listo para revisar');
+}
+function guardar() {
+  const nombre = (document.getElementById('pac-nombre').value || '').trim();
+  const ci     = (document.getElementById('pac-ci').value || '').trim();
+  if (!nombre && !ci) { toast('⚠️ Ingresá nombre o documento del paciente antes de guardar'); return; }
+  const informe = {
+    id: Date.now(),
+    nombre: nombre || '—',
+    ci: ci || '—',
+    edad: document.getElementById('pac-edad').value || '',
+    sexo: document.getElementById('pac-sexo').value || '',
+    fecha_estudio: document.getElementById('pac-fecha').value || '',
+    fecha_guardado: new Date().toISOString(),
+    measures: {
+      fc:  document.getElementById('meas-fc').value  || '',
+      pr:  document.getElementById('meas-pr').value  || '',
+      qrs: document.getElementById('meas-qrs').value || '',
+      qt:  document.getElementById('meas-qt').value  || '',
+      eje: document.getElementById('meas-eje').value || '',
+    },
+    report: document.getElementById('reportText').value || '',
+  };
+  let informes = [];
+  try { informes = JSON.parse(localStorage.getItem('ecgsmart_informes') || '[]'); } catch(e) { informes = []; }
+  informes.unshift(informe);
+  try { localStorage.setItem('ecgsmart_informes', JSON.stringify(informes)); }
+  catch(e) { toast('⚠️ No se pudo guardar (almacenamiento lleno)'); return; }
+  toast('💾 Estudio guardado');
+}
+window.limpiar = limpiar; window.generarInforme = generarInforme; window.guardar = guardar;
+
+/* ══════════════════════════════════════════════════════════════════════
+   ECG-SPECIFIC LOGIC (preserved from original ecgsmart.html)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ══ API KEY ══ */
+function saveApiKey() {
+  const v = document.getElementById('apiKey').value.trim();
+  if (!v.startsWith('sk-ant')) { setKeyStatus('err', '✗ Formato inválido'); return; }
+  S.apiKey = v;
+  localStorage.setItem('ecgsmart_api_key', v);
+  setKeyStatus('ok', '✓ Guardada');
+  updateAnalyzeBtn();
+}
+function setKeyStatus(t, m) { const el = document.getElementById('keyStatus'); el.className = 'key-status ' + t; el.textContent = m; }
+
+/* ══ IMAGEN: subir / pegar ══ */
+function fileChosen(e) { const f = e.target.files[0]; if (f) setImage(f); e.target.value = ''; }
+function onPaste(e) {
+  const items = (e.clipboardData || window.clipboardData) && (e.clipboardData || window.clipboardData).items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) { e.preventDefault(); setImage(f); return; } }
+  }
+}
+function setImage(file) {
+  if (!file.type || !file.type.startsWith('image/')) { showError('El archivo no es una imagen.'); return; }
+  hideError();
+  const r = new FileReader();
+  r.onload = ev => {
+    const base64 = ev.target.result.split(',')[1];
+    S.img = { base64, blob: URL.createObjectURL(file), mime: file.type || detectMime(base64) };
+    S.crops = {}; S.iaReport = ''; S.analyzed = false;
+    document.getElementById('previewImg').src = S.img.blob;
+    document.getElementById('previewWrap').style.display = 'block';
+    document.getElementById('resultCard').style.display = 'none';
+    document.getElementById('measCard').style.display = 'none';
+    document.getElementById('reportCard').style.display = 'none';
+    updateAnalyzeBtn();
+  };
+  r.readAsDataURL(file);
+}
+function clearImage() {
+  S.img = null; S.crops = {}; S.analyzed = false;
+  document.getElementById('previewWrap').style.display = 'none';
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('measCard').style.display = 'none';
+  document.getElementById('reportCard').style.display = 'none';
+  updateAnalyzeBtn();
+}
+function updateAnalyzeBtn() {
+  const btn = document.getElementById('btnAnalyze');
+  const ok = !!S.img && !!S.apiKey;
+  btn.disabled = !ok;
+  btn.title = !S.apiKey ? 'Guardá tu API Key primero' : (!S.img ? 'Subí una imagen' : '');
+}
+
+/* ══ ANÁLISIS (Claude Vision) ══ */
+async function analyze() {
+  if (!S.apiKey) { showError('Guardá tu API Key primero.'); return; }
+  if (!S.img) { showError('Subí una imagen de ECG primero.'); return; }
+  hideError();
+  document.getElementById('progress').classList.add('on');
+  document.getElementById('btnAnalyze').disabled = true;
+
+  const prompt = `Analizás la imagen de un electrocardiograma (ECG) de 12 derivaciones impreso en papel (foto o escaneo).
+
+Layout estándar esperado (4 filas):
+- Fila 1: I, II, III
+- Fila 2: aVR, aVL, aVF
+- Fila 3: V1, V2, V3
+- Fila 4: V4, V5, V6
+
+Tarea:
+1. Para CADA derivación, indicá las coordenadas de recorte (fracciones 0-1 respecto del ancho/alto total de la imagen: x, y = esquina superior izquierda; w, h = ancho/alto) que encierren ese trazado completo con su etiqueta.
+2. Estimá las mediciones: frecuencia cardíaca (lpm), intervalo PR (ms), duración QRS (ms), QT y QTc (ms), y eje eléctrico (grados aproximados).
+3. Redactá un informe electrocardiográfico breve en español (ritmo, frecuencia, eje, intervalos, alteraciones de ST-T, conclusión).
+
+Respondé ÚNICAMENTE con JSON válido, sin texto extra ni markdown:
+{
+  "leads": {
+    "I":{"x":0,"y":0,"w":0,"h":0},"II":{"x":0,"y":0,"w":0,"h":0},"III":{"x":0,"y":0,"w":0,"h":0},
+    "aVR":{"x":0,"y":0,"w":0,"h":0},"aVL":{"x":0,"y":0,"w":0,"h":0},"aVF":{"x":0,"y":0,"w":0,"h":0},
+    "V1":{"x":0,"y":0,"w":0,"h":0},"V2":{"x":0,"y":0,"w":0,"h":0},"V3":{"x":0,"y":0,"w":0,"h":0},
+    "V4":{"x":0,"y":0,"w":0,"h":0},"V5":{"x":0,"y":0,"w":0,"h":0},"V6":{"x":0,"y":0,"w":0,"h":0}
+  },
+  "measures": {"fc":"","pr":"","qrs":"","qt":"","qtc":"","eje":""},
+  "report": "Informe clínico en español."
+}`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': S.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: S.img.mime, data: S.img.base64 } },
+          { type: 'text', text: prompt }
+        ]}]
+      })
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error((e.error && e.error.message) || ('HTTP ' + res.status)); }
+    const data = await res.json();
+    const text = data.content.map(c => c.text || '').join('');
+    const clean = text.replace(/```json|```/g, '').trim();
+    let parsed;
+    try { parsed = JSON.parse(clean); } catch(e) { throw new Error('Respuesta inesperada de Claude: ' + text.slice(0, 180)); }
+
+    const img = await loadImg('data:' + S.img.mime + ';base64,' + S.img.base64);
+    S.crops = {};
+    for (const lead of LEADS) {
+      const c = parsed.leads && parsed.leads[lead];
+      if (!c) continue;
+      try { S.crops[lead] = cropImg(img, c); } catch(e) { console.warn('crop', lead, e); }
+    }
+    const m = parsed.measures || {};
+    document.getElementById('meas-fc').value = m.fc || '';
+    document.getElementById('meas-pr').value = m.pr || '';
+    document.getElementById('meas-qrs').value = m.qrs || '';
+    document.getElementById('meas-qt').value = (m.qt || '') + (m.qtc ? ' / ' + m.qtc : '');
+    document.getElementById('meas-eje').value = m.eje || '';
+    S.iaReport = parsed.report || '';
+
+    renderGrid();
+    S.analyzed = true;
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('measCard').style.display = 'block';
+    document.getElementById('reportCard').style.display = 'block';
+    document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(err) {
+    showError('Error en el análisis: ' + err.message);
+  } finally {
+    document.getElementById('progress').classList.remove('on');
+    document.getElementById('btnAnalyze').disabled = false;
+  }
+}
+
+function renderGrid() {
+  let html = '<div class="ecg-rows">';
+  ROWS.forEach(row => {
+    html += '<div class="ecg-r">';
+    row.forEach(lead => {
+      const crop = S.crops[lead];
+      html += `<div class="ecg-lead"><span class="lbl">${lead}</span>` +
+        (crop ? `<img src="${crop}" alt="${lead}">` : `<span class="empty">—</span>`) + `</div>`;
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  document.getElementById('ecgGrid').innerHTML = html;
+}
+
+function usarInformeIA() {
+  if (!S.iaReport) { showError('Todavía no hay informe automático. Analizá una imagen primero.'); return; }
+  document.getElementById('reportText').value = S.iaReport;
+}
+
+/* ══ HELPERS IMAGEN ══ */
+function detectMime(b64) { try { const h = atob(b64.slice(0,8)); if (h.charCodeAt(0)===0xFF && h.charCodeAt(1)===0xD8) return 'image/jpeg'; if (h.slice(1,4)==='PNG') return 'image/png'; } catch(e){} return 'image/jpeg'; }
+function loadImg(src) { return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+function cropImg(img, c) {
+  const W=img.naturalWidth, H=img.naturalHeight;
+  const x=Math.max(0,Math.round(c.x*W)), y=Math.max(0,Math.round(c.y*H));
+  const w=Math.min(Math.round(c.w*W),W-x), h=Math.min(Math.round(c.h*H),H-y);
+  if (w<=0 || h<=0) throw new Error('crop inválido');
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  cv.getContext('2d').drawImage(img,x,y,w,h,0,0,w,h);
+  return cv.toDataURL('image/png');
+}
+
+/* ══ ERRORES ══ */
+function showError(m) { const el=document.getElementById('errBanner'); el.textContent=m; el.classList.add('on'); el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+function hideError() { document.getElementById('errBanner').classList.remove('on'); }
+
+/* ══ PDF ══ */
+function pdfFilename() {
+  const pac = (document.getElementById('pac-nombre').value || 'Paciente').replace(/[^\w\sáéíóúñ-]/gi,'').trim().replace(/\s+/g,'_') || 'Paciente';
+  const fecha = document.getElementById('pac-fecha').value || '';
+  const fmt = (document.getElementById('pdf-fmt-sel') || {}).value || '0';
+  if (fmt === '1') return `${pac}_ECG_${fecha}.pdf`;
+  if (fmt === '2') return `ECG_${fecha}.pdf`;
+  return `ECGsmart_${pac}_${fecha}.pdf`;
+}
+
+function drawMMGrid(doc, x, y, w, h) {
+  doc.setFillColor(255,255,255); doc.rect(x, y, w, h, 'F');
+  doc.setLineWidth(0.1); doc.setDrawColor(248,200,212);
+  for (let gx = x; gx <= x + w + 0.01; gx += 2) doc.line(gx, y, gx, y + h);
+  for (let gy = y; gy <= y + h + 0.01; gy += 2) doc.line(x, gy, x + w, gy);
+  doc.setLineWidth(0.3); doc.setDrawColor(236,140,165);
+  for (let gx = x; gx <= x + w + 0.01; gx += 10) doc.line(gx, y, gx, y + h);
+  for (let gy = y; gy <= y + h + 0.01; gy += 10) doc.line(x, gy, x + w, gy);
+}
+
+function exportPDF() {
+  if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) { showError('No se pudo cargar el generador de PDF.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const ACC = _temaPDF[String(localStorage.getItem('ecgsmart_pdf_color') || '1')] || _temaPDF['1'];
+  const mL = 12, mR = 198, pgW = 186, W = 210;
+  let y = 0;
+
+  // ── Encabezado médico ──
+  const hdrH = 26;
+  doc.setFillColor(ACC[0], ACC[1], ACC[2]); doc.rect(0, 0, W, hdrH, 'F');
+  const logo = localStorage.getItem('ecgsmart_logo');
+  if (logo) { try { const lp = doc.getImageProperties(logo); const lh = 18, lw = lp.width * lh / lp.height; doc.addImage(logo, lp.fileType || undefined, W - lw - 6, 4, lw, lh); } catch(e){} }
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('ECGsmart', mL, 12);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text('Electrocardiograma de 12 derivaciones', mL, 18);
+  const med = getMedLines();
+  doc.setFontSize(8);
+  if (med.linea1) doc.text(med.linea1, mL, 23);
+  y = hdrH + 6;
+
+  // ── Datos paciente ──
+  doc.setTextColor(40,40,40); doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.text('DATOS DEL PACIENTE', mL, y); y += 5;
+  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 5;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(60,60,60);
+  const pac = document.getElementById('pac-nombre').value || '—';
+  const ci = document.getElementById('pac-ci').value || '—';
+  const edad = document.getElementById('pac-edad').value || '—';
+  const sx = document.getElementById('pac-sexo').value; const sexo = sx==='M'?'Masculino':sx==='F'?'Femenino':'—';
+  const fecha = document.getElementById('pac-fecha').value || '—';
+  doc.text(`Paciente: ${pac}`, mL, y); doc.text(`C.I.: ${ci}`, mL + 95, y); y += 5.5;
+  doc.text(`Edad: ${edad} años`, mL, y); doc.text(`Sexo: ${sexo}`, mL + 60, y); doc.text(`Fecha: ${fecha}`, mL + 110, y); y += 8;
+
+  // ── Grilla 12 derivaciones ──
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
+  doc.text('ELECTROCARDIOGRAMA · 12 DERIVACIONES', mL, y); y += 4;
+  const gx = mL, gy = y, gw = pgW, gh = 120;
+  drawMMGrid(doc, gx, gy, gw, gh);
+  const cellW = gw / 3, cellH = gh / 4, pad = 2.5;
+  ROWS.forEach((row, ri) => {
+    row.forEach((lead, ci2) => {
+      const cx = gx + ci2 * cellW, cy = gy + ri * cellH;
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(179,18,59);
+      doc.text(lead, cx + 2, cy + 5);
+      const crop = S.crops[lead];
+      if (crop) {
+        try {
+          const ip = doc.getImageProperties(crop);
+          const availW = cellW - pad*2, availH = cellH - pad*2 - 2;
+          let iw = availW, ih = ip.height * iw / ip.width;
+          if (ih > availH) { ih = availH; iw = ip.width * ih / ip.height; }
+          doc.addImage(crop, 'PNG', cx + (cellW - iw)/2, cy + 6, iw, ih);
+        } catch(e){}
+      }
+    });
+  });
+  y = gy + gh + 7;
+
+  // ── Mediciones ──
+  if (y + 26 > 285) { doc.addPage(); y = 14; }
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
+  doc.text('MEDICIONES', mL, y); y += 5;
+  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 6;
+  const meas = [
+    ['Frecuencia', (document.getElementById('meas-fc').value||'—') + ' lpm'],
+    ['PR', (document.getElementById('meas-pr').value||'—') + ' ms'],
+    ['QRS', (document.getElementById('meas-qrs').value||'—') + ' ms'],
+    ['QT/QTc', (document.getElementById('meas-qt').value||'—') + ' ms'],
+    ['Eje', (document.getElementById('meas-eje').value||'—') + '°'],
+  ];
+  const mw = pgW / 5;
+  meas.forEach((m, i) => {
+    const bx = mL + i * mw;
+    doc.setFillColor(245,247,250); doc.setDrawColor(220,225,235); doc.setLineWidth(0.2);
+    doc.rect(bx, y, mw - 3, 16, 'FD');
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(120,120,120);
+    doc.text(m[0].toUpperCase(), bx + 3, y + 5);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
+    doc.text(String(m[1]), bx + 3, y + 12);
+  });
+  y += 22;
+
+  // ── Informe ──
+  const report = document.getElementById('reportText').value.trim();
+  if (report) {
+    if (y + 20 > 285) { doc.addPage(); y = 14; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
+    doc.text('INFORME / CONCLUSIÓN', mL, y); y += 5;
+    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 6;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(50,50,50);
+    const lines = doc.splitTextToSize(report, pgW);
+    lines.forEach(ln => { if (y > 282) { doc.addPage(); y = 14; } doc.text(ln, mL, y); y += 5; });
+    y += 4;
+  }
+
+  // ── Firma ──
+  if (y + 24 > 290) { doc.addPage(); y = 20; }
+  y = Math.max(y, 250);
+  doc.setDrawColor(120,120,120); doc.setLineWidth(0.3); doc.line(mR - 70, y, mR, y); y += 5;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(40,40,40);
+  const firma = sv('med-nombre') || '';
+  doc.text(firma, mR, y, { align: 'right' }); y += 5;
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(90,90,90);
+  const mat = sv('med-matricula'); if (mat) { doc.text('Matrícula: ' + mat, mR, y, { align: 'right' }); y += 4; }
+  const inst = sv('med-centro'), ciu = sv('med-lugar');
+  if (inst || ciu) doc.text([inst, ciu].filter(Boolean).join(' · '), mR, y, { align: 'right' });
+
+  // ── Copyright en todas las páginas ──
+  const tot = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= tot; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(150,150,150);
+    doc.text('© 2026 Dr. M. D. S. y col. · ECGsmart · Todos los derechos reservados · Uso clínico exclusivo', 105, 292, { align: 'center' });
+  }
+
+  doc.save(pdfFilename());
+}
+
+function getMedLines() {
+  const n = sv('med-nombre');
+  const m = sv('med-matricula');
+  const i = sv('med-centro');
+  const c = sv('med-lugar');
+  const parts = [n, m ? 'Mat. ' + m : '', i, c].filter(Boolean);
+  return { linea1: parts.join('  ·  ') };
+}
+window.exportPDF = exportPDF;
+</script>
+</body>
+</html>
