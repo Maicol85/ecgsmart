@@ -1037,6 +1037,8 @@ async function analyze() {
         if (!c) return;
         nLeads++;
         const q = typeof c.quality === 'number' ? c.quality : 0.5;
+        // Descarta derivaciones dudosas / de baja calidad → no se muestran (celda vacía)
+        if (q < 0.4) return;
         if (S.crops[lead] === undefined || q > bestQ[lead]) {
           try { S.crops[lead] = cropImg(r.bitmap, c); bestQ[lead] = q; } catch(e) { console.warn('crop', lead, e); }
         }
@@ -1127,16 +1129,6 @@ function pdfFilename() {
   return `ECGsmart_${pac}_${fecha}.pdf`;
 }
 
-function drawMMGrid(doc, x, y, w, h) {
-  doc.setFillColor(255,255,255); doc.rect(x, y, w, h, 'F');
-  doc.setLineWidth(0.1); doc.setDrawColor(248,200,212);
-  for (let gx = x; gx <= x + w + 0.01; gx += 2) doc.line(gx, y, gx, y + h);
-  for (let gy = y; gy <= y + h + 0.01; gy += 2) doc.line(x, gy, x + w, gy);
-  doc.setLineWidth(0.3); doc.setDrawColor(236,140,165);
-  for (let gx = x; gx <= x + w + 0.01; gx += 10) doc.line(gx, y, gx, y + h);
-  for (let gy = y; gy <= y + h + 0.01; gy += 10) doc.line(x, gy, x + w, gy);
-}
-
 function exportPDF() {
   if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) { showError('No se pudo cargar el generador de PDF.'); return; }
   const { jsPDF } = window.jspdf;
@@ -1175,23 +1167,26 @@ function exportPDF() {
   doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
   doc.text('ELECTROCARDIOGRAMA · 12 DERIVACIONES', mL, y); y += 4;
   const gx = mL, gy = y, gw = pgW, gh = 120;
-  drawMMGrid(doc, gx, gy, gw, gh);
-  const cellW = gw / 3, cellH = gh / 4, pad = 2.5;
+  // Fondo blanco limpio (sin cuadriculado) con marco exterior fino
+  doc.setFillColor(255,255,255); doc.setDrawColor(210,210,210); doc.setLineWidth(0.2);
+  doc.rect(gx, gy, gw, gh, 'FD');
+  const cellW = gw / 3, cellH = gh / 4, labelH = 4;
   ROWS.forEach((row, ri) => {
     row.forEach((lead, ci2) => {
       const cx = gx + ci2 * cellW, cy = gy + ri * cellH;
-      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(179,18,59);
-      doc.text(lead, cx + 2, cy + 5);
       const crop = S.crops[lead];
       if (crop) {
-        try {
-          const ip = doc.getImageProperties(crop);
-          const availW = cellW - pad*2, availH = cellH - pad*2 - 2;
-          let iw = availW, ih = ip.height * iw / ip.width;
-          if (ih > availH) { ih = availH; iw = ip.width * ih / ip.height; }
-          doc.addImage(crop, 'PNG', cx + (cellW - iw)/2, cy + 6, iw, ih);
-        } catch(e){}
+        // La imagen ocupa toda la celda (mismo alto, sin padding) → continuidad tipo ECG impreso
+        try { doc.addImage(crop, 'PNG', cx, cy + labelH, cellW, cellH - labelH); } catch(e){}
+      } else {
+        // Derivación no identificada con certeza → línea de base simple, sin imagen de mala calidad
+        doc.setDrawColor(205,205,205); doc.setLineWidth(0.3);
+        const ly = cy + labelH + (cellH - labelH) / 2;
+        doc.line(cx + 2, ly, cx + cellW - 2, ly);
       }
+      // Etiqueta de la derivación (arriba a la izquierda)
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(179,18,59);
+      doc.text(lead, cx + 1.5, cy + 3.4);
     });
   });
   y = gy + gh + 7;
