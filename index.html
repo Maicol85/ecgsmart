@@ -460,6 +460,14 @@
   <div class="card" id="reportCard" style="display:none">
     <div class="card-head">📝 Informe / Conclusión <span style="font-size:10px;color:var(--text2);font-weight:400">(opcional — editable)</span></div>
     <div class="card-body">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text2);font-weight:600">Estilo:</span>
+        <div style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <button type="button" id="estilo-estandar" class="estilo-pill" onclick="setEstiloInforme('estandar')" style="padding:6px 14px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:var(--accent);color:#fff">Estándar</button>
+          <button type="button" id="estilo-conciso" class="estilo-pill" onclick="setEstiloInforme('conciso')" style="padding:6px 14px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:var(--bg3);color:var(--text)">Conciso</button>
+        </div>
+        <span id="estilo-desc" style="font-size:11px;color:var(--text2)">Informe completo: mediciones, hallazgos por derivación y conclusión clínica.</span>
+      </div>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="usarInformeIA()" id="btnUsarIA">🤖 Usar informe automático de Claude</button>
         <button class="btn btn-ghost" onclick="document.getElementById('reportText').value=''">Limpiar</button>
@@ -490,7 +498,23 @@ let S = {
   crops: {},          // lead -> dataURL
   iaReport: '',
   analyzed: false,
+  estiloInforme: localStorage.getItem('ecgsmart_estilo_informe') || 'estandar',
 };
+
+// Estilo de informe (Estándar / Conciso) — afecta el informe generado por Claude Vision
+function setEstiloInforme(v) {
+  S.estiloInforme = v;
+  localStorage.setItem('ecgsmart_estilo_informe', v);
+  const est = document.getElementById('estilo-estandar'), con = document.getElementById('estilo-conciso'), desc = document.getElementById('estilo-desc');
+  if (est && con) {
+    const on = 'var(--accent)', off = 'var(--bg3)';
+    est.style.background = v === 'estandar' ? on : off; est.style.color = v === 'estandar' ? '#fff' : 'var(--text)';
+    con.style.background = v === 'conciso' ? on : off; con.style.color = v === 'conciso' ? '#fff' : 'var(--text)';
+  }
+  if (desc) desc.textContent = v === 'conciso'
+    ? 'Conciso: solo hallazgos principales y conclusión en 2-3 líneas.'
+    : 'Informe completo: mediciones, hallazgos por derivación y conclusión clínica.';
+}
 
 /* ══ HELPERS (from index.html) ══ */
 function sv(id) {
@@ -517,6 +541,7 @@ document.addEventListener('DOMContentLoaded', () => {
   firmaLoad();
   loadTheme();
   initPdfColor();
+  setEstiloInforme(S.estiloInforme);
   if (S.apiKey) { document.getElementById('apiKey').value = S.apiKey; setKeyStatus('ok', '✓ Guardada'); }
   document.addEventListener('paste', onPaste);
 });
@@ -922,6 +947,10 @@ async function analyze() {
   document.getElementById('progress').classList.add('on');
   document.getElementById('btnAnalyze').disabled = true;
 
+  const instrInforme = S.estiloInforme === 'conciso'
+    ? '3. Redactá un informe electrocardiográfico CONCISO en español: solo los hallazgos principales y una conclusión, en 2-3 líneas en total.'
+    : '3. Redactá un informe electrocardiográfico COMPLETO en español, con estructura clara: mediciones (FC, PR, QRS, QT/QTc, eje), hallazgos por derivación (ritmo, eje, alteraciones de ST-T, ondas anómalas) y una conclusión clínica final.';
+
   const prompt = `Analizás la imagen de un electrocardiograma (ECG) de 12 derivaciones impreso en papel (foto o escaneo).
 
 Layout estándar esperado (4 filas):
@@ -933,7 +962,7 @@ Layout estándar esperado (4 filas):
 Tarea:
 1. Para CADA derivación, indicá las coordenadas de recorte (fracciones 0-1 respecto del ancho/alto total de la imagen: x, y = esquina superior izquierda; w, h = ancho/alto) que encierren ese trazado completo con su etiqueta.
 2. Estimá las mediciones: frecuencia cardíaca (lpm), intervalo PR (ms), duración QRS (ms), QT y QTc (ms), y eje eléctrico (grados aproximados).
-3. Redactá un informe electrocardiográfico breve en español (ritmo, frecuencia, eje, intervalos, alteraciones de ST-T, conclusión).
+${instrInforme}
 
 Respondé ÚNICAMENTE con JSON válido, sin texto extra ni markdown:
 {
