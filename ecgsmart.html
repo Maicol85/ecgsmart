@@ -136,6 +136,21 @@
   .modal-box p { color: var(--text2); font-size: 13px; line-height: 1.65; margin-bottom: 10px; }
   .modal-warn { background: rgba(245,200,66,.08); border: 1px solid rgba(245,200,66,.3); border-radius: 8px; padding: 12px 15px; font-size: 12px; color: var(--yellow); margin: 14px 0; line-height: 1.6; }
   .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  /* ══ LOGIN REDISEÑADO (scopeado, no afecta otros modales) ══ */
+  #modal-login { background: radial-gradient(1200px 600px at 50% 22%, #2a2a4a 0%, #1a1a2e 52%, #0d0d1a 100%); backdrop-filter: blur(4px); }
+  #modal-login .modal-box { background: rgba(255,255,255,.05); border: 1px solid rgba(163,230,53,.28); box-shadow: 0 24px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.07); backdrop-filter: blur(10px); border-radius: 18px; }
+  #modal-login .modal-logo h1 { font-size: 50px; font-weight: 900; letter-spacing: -1px; line-height: 1; color: #a3e635; text-shadow: 0 0 22px rgba(163,230,53,.55); }
+  #modal-login .modal-logo h1 span { color: #a3e635; }
+  #modal-login .modal-logo p { font-size: 15px; color: #ffffff; font-weight: 600; text-transform: none; letter-spacing: normal; margin-top: 6px; }
+  #modal-login .modal-box h2 { color: #eafff0; }
+  #modal-login .modal-box p, #modal-login .fl { color: rgba(235,255,225,.72); }
+  #modal-login input#login-pass { background: rgba(15,20,10,.55); border: 1px solid rgba(163,230,53,.3); color: #eaffdd; }
+  #modal-login .em-line { font-size: 13px; color: #86efac; opacity: .9; font-weight: 500; letter-spacing: .5px; text-align: center; margin-top: 14px; }
+  #modal-login .btn-primary { background: linear-gradient(135deg,#a3e635,#65a30d); color: #0f1a05; font-weight: 800; box-shadow: 0 6px 18px rgba(163,230,53,.4); }
+  @keyframes ecgDraw { 0% { stroke-dashoffset: 300; } 70% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+  @keyframes ecgBlink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  #ecg-wave .trace { stroke-dasharray: 300; stroke-dashoffset: 300; animation: ecgDraw 2.6s ease-in-out infinite; }
+  #ecg-wave .dot { animation: ecgBlink 1s ease-in-out infinite; }
 
   footer { text-align: center; padding: 20px; color: var(--text2); font-size: 11px; border-top: 1px solid var(--border); margin-top: 20px; }
 
@@ -152,7 +167,16 @@
 <!-- ══ AVISO LEGAL (mostrado primero) ══ -->
 <div class="modal-overlay" id="modal-login" style="z-index:1100">
   <div class="modal-box" style="max-width:400px">
-    <div class="modal-logo"><h1>ECG <span>Smart</span></h1><p>Electrocardiograma asistido por IA</p></div>
+    <div class="modal-logo">
+      <svg id="ecg-wave" width="150" height="70" viewBox="0 0 150 70" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:0 auto 8px;filter:drop-shadow(0 3px 12px rgba(163,230,53,.4))">
+        <!-- Onda ECG (PQRST) dibujándose de izq a der -->
+        <path class="trace" d="M4 40 H30 L36 40 L40 33 L44 40 H52 L56 41 L60 16 L66 60 L70 40 H86 L92 40 L98 30 L104 40 H120 L126 40 L130 34 L134 40 H146"
+              stroke="#a3e635" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Punto pulsante en el pico R -->
+        <circle class="dot" cx="63" cy="16" r="3" fill="#a3e635"/>
+      </svg>
+      <h1>ECG <span>Smart</span></h1><p>Electrocardiograma de 12 derivaciones</p>
+    </div>
     <h2 style="color:var(--accent)">🔐 Acceso</h2>
     <p>Ingresá tu contraseña para acceder al sistema.</p>
     <div style="margin-top:14px">
@@ -164,6 +188,7 @@
     </div>
     <div id="login-error" style="display:none;color:var(--red);font-size:12px;margin-top:8px">✕ Contraseña incorrecta. Intentá nuevamente.</div>
     <div class="modal-footer"><button class="btn btn-primary" onclick="ecgLogin()">Ingresar</button></div>
+    <div class="em-line">EasyMed</div>
   </div>
 </div>
 
