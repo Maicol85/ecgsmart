@@ -328,6 +328,7 @@
       <div id="thumbsCaption" style="display:none;color:var(--text2);font-size:11px;text-align:center;margin-top:6px">Vista previa procesada (imagen que se enviará a Claude Vision)</div>
       <div id="uploadActions" style="display:none;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
         <button class="btn btn-green" id="btnAnalyze" onclick="analyze()" disabled>🤖 Analizar con Claude Vision</button>
+        <button class="btn btn-ghost" id="btnRaw" onclick="analyzeRaw()" disabled title="Usa la imagen tal cual, sin recorte ni grilla">📷 Usar imagen sin editar</button>
         <button class="btn btn-ghost" onclick="clearImages()">🗑 Quitar todas</button>
       </div>
       <div class="progress" id="progress"><div class="spinner"></div><span id="progressMsg">Analizando ECG con Claude Vision…</span></div>
@@ -336,8 +337,13 @@
 
   <!-- RESULTADO -->
   <div class="card" id="resultCard" style="display:none">
-    <div class="card-head">🫀 Grilla de 12 derivaciones — Layout estándar</div>
+    <div class="card-head" id="resultHead">🫀 Grilla de 12 derivaciones — Layout estándar</div>
     <div class="card-body">
+      <div id="previewBar" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">
+        <span style="font-size:12px;color:var(--text2);flex:1;min-width:180px">Revisá el recorte propuesto. Si no quedó bien, reintentá; si está correcto, confirmá para generar el informe.</span>
+        <button class="btn btn-ghost" onclick="reintentarRecorte()">🔄 Reintentar recorte</button>
+        <button class="btn btn-green" onclick="confirmarRecorte()">✅ Confirmar y analizar</button>
+      </div>
       <div class="ecg-a4" id="ecgGrid"></div>
     </div>
   </div>
@@ -423,10 +429,12 @@ const _temaPDF = { '1':[26,58,92], '2':[26,92,58], '3':[74,26,122], '4':[123,45,
 
 let S = {
   apiKey: localStorage.getItem('ecgsmart_api_key') || '',
-  images: [],         // [{id, base64, blob, mime}]
+  images: [],         // [{id, base64, blob, mime, orig}]
   crops: {},          // lead -> dataURL (resultado combinado 12 derivaciones)
   iaReport: '',
   analyzed: false,
+  rawMode: false,     // true = usar imagen sin editar (sin recorte ni grilla)
+  pendingMeas: null,  // mediciones pendientes de confirmar en la vista previa de recorte
   estiloInforme: localStorage.getItem('ecgsmart_estilo_informe') || 'estandar',
 };
 
@@ -865,8 +873,10 @@ function igEditar(id) {
   set('reportText', it.report);
   // Restaurar recortes / grilla si están disponibles
   if (it.crops && Object.keys(it.crops).length) {
-    S.crops = it.crops; S.analyzed = true;
+    S.crops = it.crops; S.analyzed = true; S.rawMode = false;
     renderGrid();
+    const pv = document.getElementById('previewBar'); if (pv) pv.style.display = 'none';
+    const rh = document.getElementById('resultHead'); if (rh) rh.textContent = '🫀 Grilla de 12 derivaciones — Layout estándar';
     document.getElementById('resultCard').style.display = 'block';
     document.getElementById('measCard').style.display = 'block';
   }
@@ -935,11 +945,11 @@ function prepImage(file) {
           }
           ctx.putImageData(id, 0, 0);
           const out = cv.toDataURL('image/jpeg', 0.92);
-          resolve({ base64: out.split(',')[1], blob: out, mime: 'image/jpeg' });
+          resolve({ base64: out.split(',')[1], blob: out, mime: 'image/jpeg', orig: dataURL });
         } catch (e) {
           // Fallback: usar la imagen original sin procesar
           const b64 = dataURL.split(',')[1];
-          resolve({ base64: b64, blob: URL.createObjectURL(file), mime: file.type || detectMime(b64) });
+          resolve({ base64: b64, blob: URL.createObjectURL(file), mime: file.type || detectMime(b64), orig: dataURL });
         }
       };
       img.onerror = reject;
@@ -956,12 +966,12 @@ async function addFiles(fileList) {
   if (!files.length) { showError('No se encontraron imágenes válidas.'); return; }
   hideError();
   // cargar una nueva imagen invalida el análisis previo
-  S.crops = {}; S.iaReport = ''; S.analyzed = false;
+  S.crops = {}; S.iaReport = ''; S.analyzed = false; S.rawMode = false; S.pendingMeas = null;
   document.getElementById('resultCard').style.display = 'none';
   document.getElementById('measCard').style.display = 'none';
   try {
     const prepared = await Promise.all(files.map(prepImage));
-    prepared.forEach(p => S.images.push({ id: 'img' + (++_imgSeq), base64: p.base64, blob: p.blob, mime: p.mime }));
+    prepared.forEach(p => S.images.push({ id: 'img' + (++_imgSeq), base64: p.base64, blob: p.blob, mime: p.mime, orig: p.orig }));
   } catch (e) {
     showError('No se pudo procesar alguna de las imágenes.');
   }
@@ -969,14 +979,14 @@ async function addFiles(fileList) {
 }
 function removeImage(id) {
   S.images = S.images.filter(im => im.id !== id);
-  S.crops = {}; S.iaReport = ''; S.analyzed = false;
+  S.crops = {}; S.iaReport = ''; S.analyzed = false; S.rawMode = false; S.pendingMeas = null;
   document.getElementById('resultCard').style.display = 'none';
   document.getElementById('measCard').style.display = 'none';
   renderThumbs();
   updateAnalyzeBtn();
 }
 function clearImages() {
-  S.images = []; S.crops = {}; S.analyzed = false; S.iaReport = '';
+  S.images = []; S.crops = {}; S.analyzed = false; S.iaReport = ''; S.rawMode = false; S.pendingMeas = null;
   renderThumbs();
   document.getElementById('resultCard').style.display = 'none';
   document.getElementById('measCard').style.display = 'none';
@@ -993,9 +1003,14 @@ function renderThumbs() {
 }
 function updateAnalyzeBtn() {
   const btn = document.getElementById('btnAnalyze');
+  const raw = document.getElementById('btnRaw');
   const ok = S.images.length > 0 && !!S.apiKey;
   btn.disabled = !ok;
   btn.title = !S.apiKey ? 'Guardá tu API Key primero' : (!S.images.length ? 'Subí al menos una imagen' : '');
+  if (raw) {
+    raw.disabled = !ok;
+    raw.title = !S.apiKey ? 'Guardá tu API Key primero' : (!S.images.length ? 'Subí al menos una imagen' : 'Usa la imagen tal cual, sin recorte ni grilla');
+  }
 }
 
 /* ══ ANÁLISIS (Claude Vision) ══ */
@@ -1005,12 +1020,24 @@ async function analyzeOneImage(image) {
     ? 'Redactá un informe electrocardiográfico MUY CONCISO en español: solo los hallazgos principales y la conclusión, en 2-3 líneas en total. NO enumeres los valores numéricos de las mediciones (van en una tabla aparte).'
     : 'Redactá un informe electrocardiográfico BREVE en español, de MÁXIMO 4-5 líneas, únicamente con los hallazgos principales (ritmo, frecuencia, eje, alteraciones relevantes de ST-T/conducción) y una conclusión. NO enumeres los valores numéricos de las mediciones (van en una tabla aparte).';
 
-  const prompt = `Analizás UNA imagen que forma parte de un electrocardiograma (ECG) de 12 derivaciones (foto o escaneo). La imagen puede contener TODAS las derivaciones o solo ALGUNAS (por ejemplo una o varias tiras).
+  const prompt = `Analizás UNA imagen que forma parte de un electrocardiograma (ECG) de 12 derivaciones (foto o escaneo). La imagen puede contener TODAS las derivaciones o solo ALGUNAS.
+
+MUY IMPORTANTE — disposición en tiras horizontales:
+Un ECG de 12 derivaciones casi siempre está organizado en TIRAS HORIZONTALES (bandas que ocupan todo el ancho de la imagen). Puede venir en:
+- 1 tira: las 12 derivaciones (o las presentes) en una sola banda.
+- 2 tiras horizontales separadas (una arriba y otra abajo), típicamente 6 derivaciones por tira.
+- 3 tiras horizontales separadas, típicamente 4 derivaciones por tira (formato clásico 3x4: I aVR V1 V4 / II aVL V2 V5 / III aVF V3 V6).
+Estas tiras suelen estar separadas por espacios en blanco o líneas, y NO siempre están perfectamente alineadas ni tienen el mismo alto.
+
+Procedé en DOS PASOS y en este orden:
+PASO 1 — Identificá primero CUÁNTAS tiras horizontales hay (1, 2 o 3) y en qué franja vertical de la imagen está cada una (su rango 'y' aproximado). No asumas una sola banda: mirá si hay 2 o 3 bandas separadas.
+PASO 2 — Recién después, dentro de CADA tira, ubicá las derivaciones individuales de izquierda a derecha por su etiqueta, y asigná a cada una su recorte.
 
 Derivaciones posibles: I, II, III, aVR, aVL, aVF, V1, V2, V3, V4, V5, V6.
 
 Tarea:
-1. Detectá SOLO las derivaciones realmente presentes y legibles en ESTA imagen. Para cada una, indicá las coordenadas de recorte (fracciones 0-1 respecto del ancho/alto total de la imagen: x, y = esquina superior izquierda; w, h = ancho/alto) que encierren ese trazado completo con su etiqueta, y una "quality" de 0 a 1 que refleje qué tan nítida/completa está esa derivación en esta imagen.
+1. Detectá SOLO las derivaciones realmente presentes y legibles en ESTA imagen, ubicándolas dentro de su tira correspondiente (PASO 1 → PASO 2). Para cada una, indicá las coordenadas de recorte (fracciones 0-1 respecto del ancho/alto TOTAL de la imagen: x, y = esquina superior izquierda; w, h = ancho/alto) que encierren ese trazado completo con su etiqueta, y una "quality" de 0 a 1 que refleje qué tan nítida/completa está esa derivación.
+   Usá PROPORCIONES RELATIVAS CONSERVADORAS: NO recortes demasiado justo. Dejá un margen holgado alrededor de cada trazado (agregá aproximadamente un 8-12% extra de ancho y de alto respecto del contenido estricto) para tolerar fotos imperfectas, torcidas o mal encuadradas. Es preferible que el recorte incluya un poco de más antes que cortar parte del trazado o su etiqueta. El alto de cada recorte debe cubrir el alto completo de la tira que contiene esa derivación.
 2. Estimá las mediciones si el trazado lo permite: frecuencia cardíaca (lpm), intervalo PR (ms), duración QRS (ms), QT y QTc (ms), y eje eléctrico (grados). Dejá "" lo que no puedas estimar.
 3. ${instrInforme}
 
@@ -1051,9 +1078,11 @@ async function analyze() {
   if (!S.apiKey) { showError('Guardá tu API Key primero.'); return; }
   if (!S.images.length) { showError('Subí al menos una imagen de ECG primero.'); return; }
   hideError();
+  S.rawMode = false;
   const prog = document.getElementById('progress'), progMsg = document.getElementById('progressMsg');
   prog.classList.add('on');
   document.getElementById('btnAnalyze').disabled = true;
+  { const rb = document.getElementById('btnRaw'); if (rb) rb.disabled = true; }
 
   try {
     // Analiza todas las imágenes (en paralelo) y precarga cada bitmap para recortar
@@ -1086,19 +1115,18 @@ async function analyze() {
       if (nLeads > bestMeasLeads) { bestMeasLeads = nLeads; bestMeasSrc = r.parsed; }
     });
 
-    const m = (bestMeasSrc && bestMeasSrc.measures) || {};
-    document.getElementById('meas-fc').value = m.fc || '';
-    document.getElementById('meas-pr').value = m.pr || '';
-    document.getElementById('meas-qrs').value = m.qrs || '';
-    document.getElementById('meas-qt').value = (m.qt || '') + (m.qtc ? ' / ' + m.qtc : '');
-    document.getElementById('meas-eje').value = m.eje || '';
+    // Guardá las mediciones/informe como PENDIENTES: se aplican al confirmar el recorte
+    S.pendingMeas = (bestMeasSrc && bestMeasSrc.measures) || {};
     S.iaReport = (bestMeasSrc && bestMeasSrc.report) || '';
 
     renderGrid();
     S.analyzed = true;
+    // Vista previa del recorte: mostrar la grilla con botones Reintentar / Confirmar antes del informe
+    const rh = document.getElementById('resultHead');
+    if (rh) rh.textContent = '🔍 Vista previa del recorte — revisá antes de confirmar';
     document.getElementById('resultCard').style.display = 'block';
-    document.getElementById('measCard').style.display = 'block';
-    document.getElementById('reportCard').style.display = 'block';
+    const pv = document.getElementById('previewBar');
+    if (pv) pv.style.display = 'flex';
     const faltan = LEADS.filter(l => !S.crops[l]);
     if (faltan.length) toast('⚠️ No se detectaron: ' + faltan.join(', '));
     document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1106,8 +1134,96 @@ async function analyze() {
     showError('Error en el análisis: ' + err.message);
   } finally {
     prog.classList.remove('on');
-    document.getElementById('btnAnalyze').disabled = false;
+    updateAnalyzeBtn();
   }
+}
+
+// Confirmar el recorte propuesto → aplicar mediciones/informe y mostrar el informe final
+function confirmarRecorte() {
+  const pv = document.getElementById('previewBar');
+  if (pv) pv.style.display = 'none';
+  const rh = document.getElementById('resultHead');
+  if (rh) rh.textContent = '🫀 Grilla de 12 derivaciones — Layout estándar';
+  const m = S.pendingMeas || {};
+  document.getElementById('meas-fc').value = m.fc || '';
+  document.getElementById('meas-pr').value = m.pr || '';
+  document.getElementById('meas-qrs').value = m.qrs || '';
+  document.getElementById('meas-qt').value = (m.qt || '') + (m.qtc ? ' / ' + m.qtc : '');
+  document.getElementById('meas-eje').value = m.eje || '';
+  document.getElementById('measCard').style.display = 'block';
+  const ta = document.getElementById('reportText');
+  if (ta && S.iaReport && !ta.value.trim()) ta.value = S.iaReport;
+  document.getElementById('reportCard').style.display = 'block';
+  document.getElementById('reportCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('✅ Recorte confirmado');
+}
+window.confirmarRecorte = confirmarRecorte;
+
+// Reintentar el recorte → volver a llamar a Vision con las mismas imágenes
+function reintentarRecorte() {
+  toast('🔄 Reintentando recorte…');
+  analyze();
+}
+window.reintentarRecorte = reintentarRecorte;
+
+// Usar la imagen SIN EDITAR: analiza la imagen completa para informe/mediciones,
+// pero NO recorta ni muestra la grilla; en su lugar muestra la imagen original completa.
+async function analyzeRaw() {
+  if (!S.apiKey) { showError('Guardá tu API Key primero.'); return; }
+  if (!S.images.length) { showError('Subí al menos una imagen de ECG primero.'); return; }
+  hideError();
+  S.rawMode = true;
+  const prog = document.getElementById('progress'), progMsg = document.getElementById('progressMsg');
+  prog.classList.add('on');
+  document.getElementById('btnAnalyze').disabled = true;
+  { const rb = document.getElementById('btnRaw'); if (rb) rb.disabled = true; }
+  try {
+    progMsg.textContent = `Analizando la imagen completa con Claude Vision…`;
+    // Análisis sobre la imagen completa (solo para informe y mediciones; se ignoran los recortes)
+    const results = await Promise.all(S.images.map(image => analyzeOneImage(image)));
+    let bestMeasSrc = null, bestMeasLeads = -1;
+    results.forEach(parsed => {
+      const n = Object.keys((parsed && parsed.leads) || {}).length;
+      if (n > bestMeasLeads) { bestMeasLeads = n; bestMeasSrc = parsed; }
+    });
+    const m = (bestMeasSrc && bestMeasSrc.measures) || {};
+    document.getElementById('meas-fc').value = m.fc || '';
+    document.getElementById('meas-pr').value = m.pr || '';
+    document.getElementById('meas-qrs').value = m.qrs || '';
+    document.getElementById('meas-qt').value = (m.qt || '') + (m.qtc ? ' / ' + m.qtc : '');
+    document.getElementById('meas-eje').value = m.eje || '';
+    S.iaReport = (bestMeasSrc && bestMeasSrc.report) || '';
+    S.crops = {};
+
+    renderRawImages();
+    S.analyzed = true;
+    const pv = document.getElementById('previewBar');
+    if (pv) pv.style.display = 'none';
+    const rh = document.getElementById('resultHead');
+    if (rh) rh.textContent = '🖼️ Imagen del ECG (sin editar)';
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('measCard').style.display = 'block';
+    const ta = document.getElementById('reportText');
+    if (ta && S.iaReport && !ta.value.trim()) ta.value = S.iaReport;
+    document.getElementById('reportCard').style.display = 'block';
+    document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast('📷 Imagen usada sin editar');
+  } catch(err) {
+    showError('Error en el análisis: ' + err.message);
+  } finally {
+    prog.classList.remove('on');
+    updateAnalyzeBtn();
+  }
+}
+window.analyzeRaw = analyzeRaw;
+
+// Muestra la(s) imagen(es) original(es) completas en lugar de la grilla de recortes
+function renderRawImages() {
+  const imgs = S.images.map((im, i) =>
+    `<img src="${im.orig || im.blob}" alt="ECG ${i+1}" style="width:100%;max-width:100%;display:block;border-radius:6px;margin-bottom:8px">`
+  ).join('');
+  document.getElementById('ecgGrid').innerHTML =
+    `<div style="background:#fff;padding:8px;border-radius:6px">${imgs || '<span class="empty">—</span>'}</div>`;
 }
 
 function renderGrid() {
@@ -1202,33 +1318,53 @@ function exportPDF() {
   doc.text(`Paciente: ${pac}`, mL, y); doc.text(`C.I.: ${ci}`, mL + 95, y); y += 5.5;
   doc.text(`Edad: ${edad} años`, mL, y); doc.text(`Sexo: ${sexo}`, mL + 60, y); doc.text(`Fecha: ${fecha}`, mL + 110, y); y += 8;
 
-  // ── Grilla 12 derivaciones ──
-  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
-  doc.text('ELECTROCARDIOGRAMA · 12 DERIVACIONES', mL, y); y += 4;
-  const gx = mL, gy = y, gw = pgW, gh = 120;
-  // Fondo blanco limpio (sin cuadriculado) con marco exterior fino
-  doc.setFillColor(255,255,255); doc.setDrawColor(210,210,210); doc.setLineWidth(0.2);
-  doc.rect(gx, gy, gw, gh, 'FD');
-  const cellW = gw / 3, cellH = gh / 4, labelH = 4;
-  ROWS.forEach((row, ri) => {
-    row.forEach((lead, ci2) => {
-      const cx = gx + ci2 * cellW, cy = gy + ri * cellH;
-      const crop = S.crops[lead];
-      if (crop) {
-        // La imagen ocupa toda la celda (mismo alto, sin padding) → continuidad tipo ECG impreso
-        try { doc.addImage(crop, 'PNG', cx, cy + labelH, cellW, cellH - labelH); } catch(e){}
-      } else {
-        // Derivación no identificada con certeza → línea de base simple, sin imagen de mala calidad
-        doc.setDrawColor(205,205,205); doc.setLineWidth(0.3);
-        const ly = cy + labelH + (cellH - labelH) / 2;
-        doc.line(cx + 2, ly, cx + cellW - 2, ly);
-      }
-      // Etiqueta de la derivación (arriba a la izquierda)
-      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(179,18,59);
-      doc.text(lead, cx + 1.5, cy + 3.4);
+  // ── ECG: grilla de recortes (normal) o imagen original completa (sin editar) ──
+  if (S.rawMode) {
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
+    doc.text('ELECTROCARDIOGRAMA', mL, y); y += 5;
+    (S.images || []).forEach(im => {
+      const src = im.orig || im.blob;
+      if (!src) return;
+      try {
+        const pr = doc.getImageProperties(src);
+        let iw = pgW, ih = pr.height * iw / pr.width;
+        const maxH = 150;
+        if (ih > maxH) { ih = maxH; iw = pr.width * ih / pr.height; }
+        if (y + ih > 285) { doc.addPage(); y = 14; }
+        const ix = mL + (pgW - iw) / 2;
+        doc.addImage(src, pr.fileType || 'JPEG', ix, y, iw, ih);
+        y += ih + 4;
+      } catch(e) {}
     });
-  });
-  y = gy + gh + 7;
+    y += 3;
+  } else {
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
+    doc.text('ELECTROCARDIOGRAMA · 12 DERIVACIONES', mL, y); y += 4;
+    const gx = mL, gy = y, gw = pgW, gh = 120;
+    // Fondo blanco limpio (sin cuadriculado) con marco exterior fino
+    doc.setFillColor(255,255,255); doc.setDrawColor(210,210,210); doc.setLineWidth(0.2);
+    doc.rect(gx, gy, gw, gh, 'FD');
+    const cellW = gw / 3, cellH = gh / 4, labelH = 4;
+    ROWS.forEach((row, ri) => {
+      row.forEach((lead, ci2) => {
+        const cx = gx + ci2 * cellW, cy = gy + ri * cellH;
+        const crop = S.crops[lead];
+        if (crop) {
+          // La imagen ocupa toda la celda (mismo alto, sin padding) → continuidad tipo ECG impreso
+          try { doc.addImage(crop, 'PNG', cx, cy + labelH, cellW, cellH - labelH); } catch(e){}
+        } else {
+          // Derivación no identificada con certeza → línea de base simple, sin imagen de mala calidad
+          doc.setDrawColor(205,205,205); doc.setLineWidth(0.3);
+          const ly = cy + labelH + (cellH - labelH) / 2;
+          doc.line(cx + 2, ly, cx + cellW - 2, ly);
+        }
+        // Etiqueta de la derivación (arriba a la izquierda)
+        doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(179,18,59);
+        doc.text(lead, cx + 1.5, cy + 3.4);
+      });
+    });
+    y = gy + gh + 7;
+  }
 
   // ── Mediciones ──
   if (y + 26 > 285) { doc.addPage(); y = 14; }
