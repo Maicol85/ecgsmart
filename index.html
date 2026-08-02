@@ -295,7 +295,7 @@
         <button class="btn btn-primary" onclick="saveApiKey()">Guardar y verificar</button>
         <span class="key-status" id="keyStatus"></span>
       </div>
-      <div style="font-size:11px;color:var(--text2);margin-top:8px">Se guarda localmente en tu navegador (clave <code>ecgsmart_api_key</code>). Nunca se envía a otros servidores.</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px">La clave se mantiene solo durante esta sesión y se borra al cerrar la pestaña (clave <code>ecgsmart_api_key</code>). Nunca se envía a otros servidores.</div>
     </div>
   </div>
 
@@ -326,6 +326,28 @@
       <input type="file" id="ecgFile" accept="image/*" multiple style="display:none" onchange="fileChosen(event)">
       <div id="thumbsGrid" class="thumbs-grid" style="display:none"></div>
       <div id="thumbsCaption" style="display:none;color:var(--text2);font-size:11px;text-align:center;margin-top:6px">Vista previa procesada (imagen que se enviará a Claude Vision)</div>
+      <div id="calibracionRow" style="display:none; margin-top:14px; padding:12px 14px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; gap:20px; flex-wrap:wrap; align-items:center;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:12px; font-weight:700; color:var(--text2);">⚙️ Calibración del papel:</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <input type="radio" name="ecg-vel" id="vel25" value="25" checked onchange="updateCalib()"> 25 mm/s
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <input type="radio" name="ecg-vel" id="vel50" value="50" onchange="updateCalib()"> 50 mm/s
+          </label>
+          <span style="color:var(--border);margin:0 4px;">|</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <input type="radio" name="ecg-volt" id="volt10" value="10" checked onchange="updateCalib()"> 10 mm/mV
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <input type="radio" name="ecg-volt" id="volt5" value="5" onchange="updateCalib()"> 5 mm/mV
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <input type="radio" name="ecg-volt" id="volt20" value="20" onchange="updateCalib()"> 20 mm/mV
+          </label>
+          <span id="calibHint" style="font-size:11px;color:var(--text2);font-style:italic;"></span>
+        </div>
+      </div>
       <div id="uploadActions" style="display:none;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
         <button class="btn btn-green" id="btnAnalyze" onclick="analyze()" disabled>🤖 Analizar con Claude Vision</button>
         <button class="btn btn-ghost" id="btnRaw" onclick="analyzeRaw()" disabled title="Usa la imagen tal cual, sin recorte ni grilla">📷 Usar imagen sin editar</button>
@@ -428,7 +450,7 @@ const ROWS = [['I','II','III'],['aVR','aVL','aVF'],['V1','V2','V3'],['V4','V5','
 const _temaPDF = { '1':[26,58,92], '2':[26,92,58], '3':[74,26,122], '4':[123,45,66] };
 
 let S = {
-  apiKey: localStorage.getItem('ecgsmart_api_key') || '',
+  apiKey: sessionStorage.getItem('ecgsmart_api_key') || '',
   images: [],         // [{id, base64, blob, mime, orig}]
   crops: {},          // lead -> dataURL (resultado combinado 12 derivaciones)
   iaReport: '',
@@ -481,6 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setEstiloInforme(S.estiloInforme);
   if (S.apiKey) { document.getElementById('apiKey').value = S.apiKey; setKeyStatus('ok', '✓ Guardada'); }
   document.addEventListener('paste', onPaste);
+  updateCalib();
 });
 
 /* ══════════════ LOGIN (sesión válida 8 horas) ══════════════ */
@@ -896,7 +919,7 @@ function saveApiKey() {
   const v = document.getElementById('apiKey').value.trim();
   if (!v.startsWith('sk-ant')) { setKeyStatus('err', '✗ Formato inválido'); return; }
   S.apiKey = v;
-  localStorage.setItem('ecgsmart_api_key', v);
+  sessionStorage.setItem('ecgsmart_api_key', v);
   setKeyStatus('ok', '✓ Guardada');
   updateAnalyzeBtn();
 }
@@ -995,8 +1018,14 @@ function clearImages() {
 function renderThumbs() {
   const grid = document.getElementById('thumbsGrid'), acts = document.getElementById('uploadActions');
   const cap = document.getElementById('thumbsCaption');
-  if (!S.images.length) { grid.style.display = 'none'; grid.innerHTML = ''; acts.style.display = 'none'; if (cap) cap.style.display = 'none'; return; }
-  grid.style.display = 'grid'; acts.style.display = 'flex'; if (cap) cap.style.display = 'block';
+  if (!S.images.length) {
+    grid.style.display = 'none'; grid.innerHTML = ''; acts.style.display = 'none';
+    document.getElementById('calibracionRow').style.display = 'none';
+    if (cap) cap.style.display = 'none'; return;
+  }
+  grid.style.display = 'grid'; acts.style.display = 'flex';
+  document.getElementById('calibracionRow').style.display = 'flex';
+  if (cap) cap.style.display = 'block';
   grid.innerHTML = S.images.map((im, i) =>
     `<div class="thumb-item"><img src="${im.blob}" alt="ECG ${i+1}"><span class="thumb-n">${i+1}</span>` +
     `<button type="button" class="thumb-del" title="Eliminar" onclick="removeImage('${im.id}')">✕</button></div>`).join('');
@@ -1013,14 +1042,37 @@ function updateAnalyzeBtn() {
   }
 }
 
+function getCalib() {
+  const vel = document.querySelector('input[name="ecg-vel"]:checked');
+  const volt = document.querySelector('input[name="ecg-volt"]:checked');
+  return {
+    velocidad: vel ? parseInt(vel.value) : 25,
+    voltaje: volt ? parseInt(volt.value) : 10
+  };
+}
+
+function updateCalib() {
+  const c = getCalib();
+  const msPerMm = c.velocidad === 50 ? 20 : 40;
+  const hint = document.getElementById('calibHint');
+  if (hint) hint.textContent = '→ 1 mm = ' + msPerMm + ' ms · 1 cuadrado grande = ' + (msPerMm * 5) + ' ms';
+}
+
 /* ══ ANÁLISIS (Claude Vision) ══ */
 // Envía UNA imagen a Claude Vision; devuelve {leads:{lead:{x,y,w,h,quality}}, measures, report}
 async function analyzeOneImage(image) {
+  const calib = getCalib();
+  const msPerMm = calib.velocidad === 50 ? 20 : 40;
+  const calibInfo = 'PARÁMETROS DE CALIBRACIÓN DEL PAPEL ECG:\n' +
+    '- Velocidad: ' + calib.velocidad + ' mm/s → cada 1 mm horizontal = ' + msPerMm + ' ms | cada cuadradito (1mm) = ' + msPerMm + 'ms | cada cuadrado grande (5mm) = ' + (msPerMm * 5) + 'ms\n' +
+    '- Ganancia: ' + calib.voltaje + ' mm/mV → cada 1 mm vertical = ' + (1/calib.voltaje).toFixed(4) + ' mV | cada cuadrado grande (5mm) = ' + (5/calib.voltaje).toFixed(2) + ' mV\n' +
+    'Usá SIEMPRE esta escala para calcular PR, QRS, QT y QTc en milisegundos. NO asumas valores estándar si no coinciden con esta calibración.\n\n';
+
   const instrInforme = S.estiloInforme === 'conciso'
     ? 'Redactá un informe electrocardiográfico MUY CONCISO en español: solo los hallazgos principales y la conclusión, en 2-3 líneas en total. NO enumeres los valores numéricos de las mediciones (van en una tabla aparte).'
     : 'Redactá un informe electrocardiográfico BREVE en español, de MÁXIMO 4-5 líneas, únicamente con los hallazgos principales (ritmo, frecuencia, eje, alteraciones relevantes de ST-T/conducción) y una conclusión. NO enumeres los valores numéricos de las mediciones (van en una tabla aparte).';
 
-  const prompt = `Analizás UNA imagen que forma parte de un electrocardiograma (ECG) de 12 derivaciones (foto o escaneo). La imagen puede contener TODAS las derivaciones o solo ALGUNAS.
+  const prompt = `${calibInfo}Analizás UNA imagen que forma parte de un electrocardiograma (ECG) de 12 derivaciones (foto o escaneo). La imagen puede contener TODAS las derivaciones o solo ALGUNAS.
 
 MUY IMPORTANTE — disposición en tiras horizontales:
 Un ECG de 12 derivaciones casi siempre está organizado en TIRAS HORIZONTALES (bandas que ocupan todo el ancho de la imagen). Puede venir en:
@@ -1106,9 +1158,14 @@ async function analyze() {
         nLeads++;
         const q = typeof c.quality === 'number' ? c.quality : 0.5;
         // Descarta derivaciones dudosas / de baja calidad → no se muestran (celda vacía)
-        if (q < 0.4) return;
+        if (q < 0.25) return;
         if (S.crops[lead] === undefined || q > bestQ[lead]) {
-          try { S.crops[lead] = cropImg(r.bitmap, c); bestQ[lead] = q; } catch(e) { console.warn('crop', lead, e); }
+          try {
+            S.crops[lead] = cropImg(r.bitmap, c);
+            bestQ[lead] = q;
+          } catch(e) {
+            console.warn('⚠️ Crop falló —', lead, '| coords:', JSON.stringify(c), '| error:', e.message);
+          }
         }
       });
       // mediciones/informe: de la imagen más completa
@@ -1261,12 +1318,27 @@ window.generarConIA = generarConIA;
 function detectMime(b64) { try { const h = atob(b64.slice(0,8)); if (h.charCodeAt(0)===0xFF && h.charCodeAt(1)===0xD8) return 'image/jpeg'; if (h.slice(1,4)==='PNG') return 'image/png'; } catch(e){} return 'image/jpeg'; }
 function loadImg(src) { return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
 function cropImg(img, c) {
-  const W=img.naturalWidth, H=img.naturalHeight;
-  const x=Math.max(0,Math.round(c.x*W)), y=Math.max(0,Math.round(c.y*H));
-  const w=Math.min(Math.round(c.w*W),W-x), h=Math.min(Math.round(c.h*H),H-y);
-  if (w<=0 || h<=0) throw new Error('crop inválido');
-  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-  cv.getContext('2d').drawImage(img,x,y,w,h,0,0,w,h);
+  // Soporte para HTMLImageElement (naturalWidth) e ImageBitmap (width)
+  const W = img.naturalWidth || img.width || 0;
+  const H = img.naturalHeight || img.height || 0;
+  if (!W || !H) throw new Error('imagen sin dimensiones');
+
+  // Normalizar coordenadas si están fuera del rango 0-1
+  const cx = Math.max(0, Math.min(0.99, c.x || 0));
+  const cy = Math.max(0, Math.min(0.99, c.y || 0));
+  const cw = Math.max(0.02, Math.min(1 - cx, c.w || 0.1));
+  const ch = Math.max(0.02, Math.min(1 - cy, c.h || 0.1));
+
+  const x = Math.round(cx * W);
+  const y = Math.round(cy * H);
+  const w = Math.min(Math.round(cw * W), W - x);
+  const h = Math.min(Math.round(ch * H), H - y);
+
+  if (w <= 2 || h <= 2) throw new Error('crop demasiado pequeño: ' + w + 'x' + h + 'px');
+
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  cv.getContext('2d').drawImage(img, x, y, w, h, 0, 0, w, h);
   return cv.toDataURL('image/png');
 }
 
