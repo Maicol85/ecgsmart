@@ -352,9 +352,17 @@
         </div>
       </div>
       <div id="uploadActions" style="display:none;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-        <button class="btn btn-green" id="btnRaw" onclick="analyzeRaw()" disabled title="Usa la imagen tal cual, sin recorte ni grilla">📷 Analizar ECG</button>
-        <button class="btn btn-ghost" id="btnAnalyze" onclick="analyze()" disabled>✂️ Analizar con recorte automático</button>
-        <button class="btn btn-ghost" onclick="clearImages()">🗑 Quitar todas</button>
+        <button class="btn btn-green" id="btnRaw"
+          onclick="analyzeRaw()" disabled>
+          📷 Analizar ECG
+        </button>
+        <button class="btn btn-ghost" id="btnAnalyze"
+          onclick="analyze()" disabled>
+          ✂️ Analizar con recorte automático
+        </button>
+        <button class="btn btn-ghost" onclick="clearImages()">
+          🗑 Quitar todas
+        </button>
       </div>
       <div class="progress" id="progress"><div class="spinner"></div><span id="progressMsg">Analizando ECG con Claude Vision…</span></div>
     </div>
@@ -1406,7 +1414,7 @@ function exportPDF() {
   const med = getMedLines();
   doc.setFontSize(7);
   if (med.linea1) doc.text(med.linea1, mL, 19);
-  y = hdrH + 4;
+  y = hdrH + 6;
 
   // ── Datos paciente ──
   doc.setTextColor(40,40,40); doc.setFont('helvetica','bold'); doc.setFontSize(11);
@@ -1420,12 +1428,12 @@ function exportPDF() {
   const fecha = document.getElementById('pac-fecha').value || '—';
   doc.text(`Paciente: ${pac}`, mL, y); doc.text(`C.I.: ${ci}`, mL + 95, y); y += 5.5;
   doc.text(`Edad: ${edad} años`, mL, y); doc.text(`Sexo: ${sexo}`, mL + 60, y); doc.text(`Fecha: ${fmtFecha(fecha)}`, mL + 110, y); y += 5;
-  doc.text('DC: ' + (document.getElementById('pac-dc').value || '—'), mL, y); y += 4;
+  doc.text('DC: ' + (document.getElementById('pac-dc').value || '—'), mL, y); y += 6;
 
   // ── ECG: grilla de recortes (normal) o imagen original completa (sin editar) ──
   if (S.rawMode) {
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
-    doc.text('ELECTROCARDIOGRAMA', mL, y); y += 5;
+    doc.text('ELECTROCARDIOGRAMA', mL, y); y += 4;
     (S.images || []).forEach(im => {
       const src = im.orig || im.blob;
       if (!src) return;
@@ -1444,7 +1452,7 @@ function exportPDF() {
   } else {
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
     doc.text('ELECTROCARDIOGRAMA · 12 DERIVACIONES', mL, y); y += 4;
-    const gx = mL, gy = y, gw = pgW, gh = 108;
+    const gx = mL, gy = y, gw = pgW, gh = 99;
     // Fondo blanco limpio (sin cuadriculado) con marco exterior fino
     doc.setFillColor(255,255,255); doc.setDrawColor(210,210,210); doc.setLineWidth(0.2);
     doc.rect(gx, gy, gw, gh, 'FD');
@@ -1453,6 +1461,8 @@ function exportPDF() {
       row.forEach((lead, ci2) => {
         const cx = gx + ci2 * cellW, cy = gy + ri * cellH;
         const crop = S.crops[lead];
+        doc.setFillColor(255, 255, 255);
+        doc.rect(cx, cy, cellW, cellH, 'F');
         if (crop) {
           // La imagen ocupa toda la celda (mismo alto, sin padding) → continuidad tipo ECG impreso
           try { doc.addImage(crop, 'PNG', cx, cy + labelH, cellW, cellH - labelH); } catch(e){}
@@ -1467,7 +1477,7 @@ function exportPDF() {
         doc.text(lead, cx + 1.5, cy + 3.4);
       });
     });
-    y = gy + gh + 4;
+    y = gy + gh + 6;
   }
 
   // ── Mediciones ──
@@ -1492,7 +1502,7 @@ function exportPDF() {
     doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
     doc.text(String(m[1]), bx + 3, y + 9.5);
   });
-  y += 16;
+  y += 18;
 
   // ── Informe ──
   const report = document.getElementById('reportText').value.trim();
@@ -1511,12 +1521,15 @@ function exportPDF() {
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(50,50,50);
     const lines = doc.splitTextToSize(bodyLines.join('\n'), pgW);
     lines.forEach(ln => { if (y > 282) { doc.addPage(); y = 14; } doc.text(ln, mL, y); y += 4.5; });
+    y += 4;
 
     // Imprimir conclusión en recuadro con fondo suave
     if (concLines.length) {
-      y += 4;
       const concText = concLines.join(' ');
-      const concWrapped = doc.splitTextToSize(concText, pgW - 8);
+      const concTextoLimpio = concText
+        .replace(/^conclusi[oó]n\s*:\s*/i, '')
+        .trim();
+      const concWrapped = doc.splitTextToSize(concTextoLimpio, pgW - 8);
       const concH = concWrapped.length * 5 + 8;
       doc.setFillColor(245, 247, 252);
       doc.setDrawColor(ACC[0], ACC[1], ACC[2]);
