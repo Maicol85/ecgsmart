@@ -1018,13 +1018,14 @@ function clearImages() {
 function renderThumbs() {
   const grid = document.getElementById('thumbsGrid'), acts = document.getElementById('uploadActions');
   const cap = document.getElementById('thumbsCaption');
+  const cr = document.getElementById('calibracionRow');
   if (!S.images.length) {
     grid.style.display = 'none'; grid.innerHTML = ''; acts.style.display = 'none';
-    document.getElementById('calibracionRow').style.display = 'none';
+    if (cr) cr.style.display = 'none';
     if (cap) cap.style.display = 'none'; return;
   }
   grid.style.display = 'grid'; acts.style.display = 'flex';
-  document.getElementById('calibracionRow').style.display = 'flex';
+  if (cr) cr.style.display = 'flex';
   if (cap) cap.style.display = 'block';
   grid.innerHTML = S.images.map((im, i) =>
     `<div class="thumb-item"><img src="${im.blob}" alt="ECG ${i+1}"><span class="thumb-n">${i+1}</span>` +
@@ -1069,8 +1070,21 @@ async function analyzeOneImage(image) {
     'Usá SIEMPRE esta escala para calcular PR, QRS, QT y QTc en milisegundos. NO asumas valores estándar si no coinciden con esta calibración.\n\n';
 
   const instrInforme = S.estiloInforme === 'conciso'
-    ? 'Redactá un informe electrocardiográfico MUY CONCISO en español: solo los hallazgos principales y la conclusión, en 2-3 líneas en total. NO enumeres los valores numéricos de las mediciones (van en una tabla aparte).'
-    : 'Redactá un informe electrocardiográfico BREVE en español, de MÁXIMO 4-5 líneas, únicamente con los hallazgos principales (ritmo, frecuencia, eje, alteraciones relevantes de ST-T/conducción) y una conclusión. NO enumeres los valores numéricos de las mediciones (van en una tabla aparte).';
+    ? 'Redactá un informe electrocardiográfico MUY CONCISO en español con este formato exacto, una línea por item:\n' +
+      '- Ritmo y FC\n' +
+      '- Onda P / PR\n' +
+      '- Eje / QRS\n' +
+      '- ST-T\n' +
+      '- Conclusión\n\n' +
+      'Sé muy breve. NO pongas valores numéricos.'
+    : 'Redactá un informe electrocardiográfico en español estructurado EXACTAMENTE en este formato, con cada item en una línea separada:\n' +
+      '- Ritmo y frecuencia cardíaca\n' +
+      '- Onda P e intervalo PR\n' +
+      '- Eje eléctrico medio\n' +
+      '- Complejo QRS\n' +
+      '- Segmento ST y onda T\n' +
+      '- Conclusión\n\n' +
+      'Cada línea debe comenzar con el nombre del parámetro seguido de dos puntos y el hallazgo. NO pongas los valores numéricos de las mediciones (van en tabla aparte). Sé conciso en cada línea.';
 
   const prompt = `${calibInfo}Analizás UNA imagen que forma parte de un electrocardiograma (ECG) de 12 derivaciones (foto o escaneo). La imagen puede contener TODAS las derivaciones o solo ALGUNAS.
 
@@ -1201,12 +1215,19 @@ function confirmarRecorte() {
   if (pv) pv.style.display = 'none';
   const rh = document.getElementById('resultHead');
   if (rh) rh.textContent = '🫀 Grilla de 12 derivaciones — Layout estándar';
-  const m = S.pendingMeas || {};
-  document.getElementById('meas-fc').value = m.fc || '';
-  document.getElementById('meas-pr').value = m.pr || '';
-  document.getElementById('meas-qrs').value = m.qrs || '';
-  document.getElementById('meas-qt').value = (m.qt || '') + (m.qtc ? ' / ' + m.qtc : '');
-  document.getElementById('meas-eje').value = m.eje || '';
+  if (S.pendingMeas) {
+    const m = S.pendingMeas;
+    const set = (id, val) => {
+      const el = document.getElementById(id);
+      if (el && val) el.value = val;
+    };
+    set('meas-fc',  m.fc  || '');
+    set('meas-pr',  m.pr  || '');
+    set('meas-qrs', m.qrs || '');
+    set('meas-qt',  (m.qt || '') + (m.qtc ? ' / ' + m.qtc : ''));
+    set('meas-eje', m.eje || '');
+    S.pendingMeas = null;
+  }
   document.getElementById('measCard').style.display = 'block';
   const ta = document.getElementById('reportText');
   if (ta && S.iaReport && !ta.value.trim()) ta.value = S.iaReport;
