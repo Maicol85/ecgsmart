@@ -1081,21 +1081,21 @@ async function analyzeOneImage(image) {
     'Usá SIEMPRE esta escala para calcular PR, QRS, QT y QTc en milisegundos. NO asumas valores estándar si no coinciden con esta calibración.\n\n';
 
   const instrInforme = S.estiloInforme === 'conciso'
-    ? 'Redactá un informe electrocardiográfico MUY CONCISO en español con este formato exacto, una línea por item:\n' +
-      '- Ritmo y FC\n' +
-      '- Onda P / PR\n' +
-      '- Eje / QRS\n' +
-      '- ST-T\n' +
-      '- Conclusión\n\n' +
-      'Sé muy breve. NO pongas valores numéricos.'
-    : 'Redactá un informe electrocardiográfico en español estructurado EXACTAMENTE en este formato, con cada item en una línea separada:\n' +
-      '- Ritmo y frecuencia cardíaca\n' +
-      '- Onda P e intervalo PR\n' +
-      '- Eje eléctrico medio\n' +
-      '- Complejo QRS\n' +
-      '- Segmento ST y onda T\n' +
-      '- Conclusión\n\n' +
-      'Cada línea debe comenzar con el nombre del parámetro seguido de dos puntos y el hallazgo. NO pongas los valores numéricos de las mediciones (van en tabla aparte). Sé conciso en cada línea.';
+    ? 'Redactá un informe ECG MUY CONCISO en español, una línea por item con valores numéricos:\n' +
+      '- Ritmo/FC: [valor lpm]\n' +
+      '- PR/QRS: [valores ms]\n' +
+      '- Eje: [grados]\n' +
+      '- ST-T: [hallazgo]\n' +
+      '- Conclusión: [síntesis]\n\n' +
+      'FC 60-100 lpm = normal. No usar "normal baja" para FC dentro del rango normal.'
+    : 'Redactá un informe electrocardiográfico en español estructurado EXACTAMENTE en este formato, una línea por item, INCLUYENDO los valores numéricos medidos:\n' +
+      '- Ritmo y FC: [ritmo, valor FC en lpm]\n' +
+      '- Onda P / PR: [descripción, valor PR en ms]\n' +
+      '- Eje eléctrico: [valor en grados]\n' +
+      '- QRS: [duración en ms, morfología]\n' +
+      '- ST-T: [descripción]\n' +
+      '- Conclusión: [síntesis]\n\n' +
+      'Sé preciso con los valores numéricos. FC normal = 60-100 lpm. No calificues una FC de 87-95 lpm como "normal baja" — es simplemente normal.';
 
   const prompt = `${calibInfo}Analizás UNA imagen que forma parte de un electrocardiograma (ECG) de 12 derivaciones (foto o escaneo). La imagen puede contener TODAS las derivaciones o solo ALGUNAS.
 
@@ -1417,18 +1417,26 @@ function exportPDF() {
   y = hdrH + 6;
 
   // ── Datos paciente ──
-  doc.setTextColor(40,40,40); doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.text('DATOS DEL PACIENTE', mL, y); y += 5;
-  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 5;
-  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(60,60,60);
   const pac = document.getElementById('pac-nombre').value || '—';
   const ci = document.getElementById('pac-ci').value || '—';
   const edad = document.getElementById('pac-edad').value || '—';
   const sx = document.getElementById('pac-sexo').value; const sexo = sx==='M'?'Masculino':sx==='F'?'Femenino':'—';
   const fecha = document.getElementById('pac-fecha').value || '—';
-  doc.text(`Paciente: ${pac}`, mL, y); doc.text(`C.I.: ${ci}`, mL + 95, y); y += 5.5;
-  doc.text(`Edad: ${edad} años`, mL, y); doc.text(`Sexo: ${sexo}`, mL + 60, y); doc.text(`Fecha: ${fmtFecha(fecha)}`, mL + 110, y); y += 5;
-  doc.text('DC: ' + (document.getElementById('pac-dc').value || '—'), mL, y); y += 6;
+  doc.setTextColor(40,40,40); doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.text('DATOS DEL PACIENTE', mL, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('Fecha: ' + fmtFecha(fecha), mR, y, { align: 'right' });
+  y += 4;
+  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 5;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(60,60,60);
+  doc.text('Paciente: ' + pac, mL, y);
+  doc.text('C.I.: ' + ci, mL + 80, y);
+  y += 5.5;
+  doc.text('Edad: ' + edad + ' años', mL, y);
+  doc.text('Sexo: ' + sexo, mL + 55, y);
+  doc.text('DC: ' + (document.getElementById('pac-dc').value || '—'), mL + 100, y);
+  y += 7;
 
   // ── ECG: grilla de recortes (normal) o imagen original completa (sin editar) ──
   if (S.rawMode) {
@@ -1523,26 +1531,27 @@ function exportPDF() {
     lines.forEach(ln => { if (y > 282) { doc.addPage(); y = 14; } doc.text(ln, mL, y); y += 4.5; });
     y += 4;
 
-    // Imprimir conclusión en recuadro con fondo suave
+    // Imprimir conclusión como sección independiente
     if (concLines.length) {
-      const concText = concLines.join(' ');
-      const concTextoLimpio = concText
-        .replace(/^conclusi[oó]n\s*:\s*/i, '')
-        .trim();
-      const concWrapped = doc.splitTextToSize(concTextoLimpio, pgW - 8);
-      const concH = concWrapped.length * 5 + 8;
-      doc.setFillColor(245, 247, 252);
-      doc.setDrawColor(ACC[0], ACC[1], ACC[2]);
-      doc.setLineWidth(0.4);
-      doc.rect(mL, y, pgW, concH, 'FD');
+      y += 6;
+      // Título CONCLUSIÓN con línea
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(ACC[0], ACC[1], ACC[2]);
-      doc.text('CONCLUSIÓN', mL + 4, y + 5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
       doc.setTextColor(40, 40, 40);
-      doc.text(concWrapped, mL + 4, y + 10);
-      y += concH + 4;
+      doc.text('CONCLUSIÓN', mL, y); y += 3;
+      doc.setDrawColor(ACC[0], ACC[1], ACC[2]);
+      doc.setLineWidth(0.5);
+      doc.line(mL, y, mR, y); y += 5;
+      // Texto de la conclusión
+      const concTextoLimpio = concLines.join(' ')
+        .replace(/^conclusi[oó]n\s*:\s*/i, '').trim();
+      const concWrapped = doc.splitTextToSize(
+        concTextoLimpio, pgW);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(40, 40, 40);
+      doc.text(concWrapped, mL, y);
+      y += concWrapped.length * 5 + 6;
     }
   }
 
