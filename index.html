@@ -84,13 +84,11 @@
   .preview-img { max-width: 100%; max-height: 340px; border-radius: 10px; border: 1px solid var(--border); display: block; margin: 0 auto; }
 
   /* ══ MM GRID (12 derivaciones) ══ */
-  .ecg-a4 { background-color: #fff; background-image:
-      linear-gradient(rgba(240,150,170,.55) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(240,150,170,.55) 1px, transparent 1px),
-      linear-gradient(rgba(248,200,212,.6) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(248,200,212,.6) 1px, transparent 1px);
-    background-size: 25px 25px, 25px 25px, 5px 5px, 5px 5px;
-    border-radius: 8px; padding: 10px; }
+  .ecg-a4 {
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 10px;
+  }
   .ecg-rows { display: grid; grid-template-rows: repeat(4, 1fr); gap: 6px; }
   .ecg-r { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .ecg-lead { position: relative; background: rgba(255,255,255,.35); border-radius: 4px; min-height: 92px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -309,6 +307,11 @@
         <div><label class="fl">Edad</label><input class="in" id="pac-edad" type="number" placeholder="años"></div>
         <div><label class="fl">Sexo</label><select class="in" id="pac-sexo"><option value="">—</option><option value="M">Masculino</option><option value="F">Femenino</option></select></div>
         <div><label class="fl">Fecha del estudio</label><input class="in" id="pac-fecha" type="date"></div>
+        <div>
+          <label class="fl">Dato clínico / Motivo</label>
+          <input class="in" id="pac-dc" type="text"
+            placeholder="Ej: palpitaciones, control, disnea...">
+        </div>
       </div>
     </div>
   </div>
@@ -349,8 +352,8 @@
         </div>
       </div>
       <div id="uploadActions" style="display:none;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-        <button class="btn btn-green" id="btnAnalyze" onclick="analyze()" disabled>🤖 Analizar con Claude Vision</button>
-        <button class="btn btn-ghost" id="btnRaw" onclick="analyzeRaw()" disabled title="Usa la imagen tal cual, sin recorte ni grilla">📷 Usar imagen sin editar</button>
+        <button class="btn btn-green" id="btnRaw" onclick="analyzeRaw()" disabled title="Usa la imagen tal cual, sin recorte ni grilla">📷 Analizar ECG</button>
+        <button class="btn btn-ghost" id="btnAnalyze" onclick="analyze()" disabled>✂️ Analizar con recorte automático</button>
         <button class="btn btn-ghost" onclick="clearImages()">🗑 Quitar todas</button>
       </div>
       <div class="progress" id="progress"><div class="spinner"></div><span id="progressMsg">Analizando ECG con Claude Vision…</span></div>
@@ -1377,6 +1380,13 @@ function pdfFilename() {
   return `ECGsmart_${pac}_${fecha}.pdf`;
 }
 
+function fmtFecha(val) {
+  if (!val) return '—';
+  const p = val.split('-');
+  if (p.length === 3) return p[2] + '/' + p[1] + '/' + p[0];
+  return val;
+}
+
 function exportPDF() {
   if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) { showError('No se pudo cargar el generador de PDF.'); return; }
   const { jsPDF } = window.jspdf;
@@ -1386,17 +1396,17 @@ function exportPDF() {
   let y = 0;
 
   // ── Encabezado médico ──
-  const hdrH = 26;
+  const hdrH = 20;
   doc.setFillColor(ACC[0], ACC[1], ACC[2]); doc.rect(0, 0, W, hdrH, 'F');
   const logo = localStorage.getItem('ecgsmart_logo');
-  if (logo) { try { const lp = doc.getImageProperties(logo); const lh = 18, lw = lp.width * lh / lp.height; doc.addImage(logo, lp.fileType || undefined, W - lw - 6, 4, lw, lh); } catch(e){} }
+  if (logo) { try { const lp = doc.getImageProperties(logo); const lh = 14, lw = lp.width * lh / lp.height; doc.addImage(logo, lp.fileType || undefined, W - lw - 6, 3, lw, lh); } catch(e){} }
   doc.setTextColor(255,255,255);
-  doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('ECGsmart', mL, 12);
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text('Electrocardiograma de 12 derivaciones', mL, 18);
+  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('ECGsmart', W / 2, 10, { align: 'center' });
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text('Electrocardiograma de 12 derivaciones', W / 2, 15, { align: 'center' });
   const med = getMedLines();
-  doc.setFontSize(8);
-  if (med.linea1) doc.text(med.linea1, mL, 23);
-  y = hdrH + 6;
+  doc.setFontSize(7);
+  if (med.linea1) doc.text(med.linea1, mL, 19);
+  y = hdrH + 4;
 
   // ── Datos paciente ──
   doc.setTextColor(40,40,40); doc.setFont('helvetica','bold'); doc.setFontSize(11);
@@ -1409,7 +1419,8 @@ function exportPDF() {
   const sx = document.getElementById('pac-sexo').value; const sexo = sx==='M'?'Masculino':sx==='F'?'Femenino':'—';
   const fecha = document.getElementById('pac-fecha').value || '—';
   doc.text(`Paciente: ${pac}`, mL, y); doc.text(`C.I.: ${ci}`, mL + 95, y); y += 5.5;
-  doc.text(`Edad: ${edad} años`, mL, y); doc.text(`Sexo: ${sexo}`, mL + 60, y); doc.text(`Fecha: ${fecha}`, mL + 110, y); y += 8;
+  doc.text(`Edad: ${edad} años`, mL, y); doc.text(`Sexo: ${sexo}`, mL + 60, y); doc.text(`Fecha: ${fmtFecha(fecha)}`, mL + 110, y); y += 5;
+  doc.text('DC: ' + (document.getElementById('pac-dc').value || '—'), mL, y); y += 4;
 
   // ── ECG: grilla de recortes (normal) o imagen original completa (sin editar) ──
   if (S.rawMode) {
@@ -1433,7 +1444,7 @@ function exportPDF() {
   } else {
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
     doc.text('ELECTROCARDIOGRAMA · 12 DERIVACIONES', mL, y); y += 4;
-    const gx = mL, gy = y, gw = pgW, gh = 120;
+    const gx = mL, gy = y, gw = pgW, gh = 108;
     // Fondo blanco limpio (sin cuadriculado) con marco exterior fino
     doc.setFillColor(255,255,255); doc.setDrawColor(210,210,210); doc.setLineWidth(0.2);
     doc.rect(gx, gy, gw, gh, 'FD');
@@ -1456,14 +1467,14 @@ function exportPDF() {
         doc.text(lead, cx + 1.5, cy + 3.4);
       });
     });
-    y = gy + gh + 7;
+    y = gy + gh + 4;
   }
 
   // ── Mediciones ──
-  if (y + 26 > 285) { doc.addPage(); y = 14; }
+  if (y + 22 > 285) { doc.addPage(); y = 14; }
   doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
-  doc.text('MEDICIONES', mL, y); y += 5;
-  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 6;
+  doc.text('MEDICIONES', mL, y); y += 4;
+  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 4;
   const meas = [
     ['Frecuencia', (document.getElementById('meas-fc').value||'—') + ' lpm'],
     ['PR', (document.getElementById('meas-pr').value||'—') + ' ms'],
@@ -1475,35 +1486,61 @@ function exportPDF() {
   meas.forEach((m, i) => {
     const bx = mL + i * mw;
     doc.setFillColor(245,247,250); doc.setDrawColor(220,225,235); doc.setLineWidth(0.2);
-    doc.rect(bx, y, mw - 3, 16, 'FD');
-    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(120,120,120);
-    doc.text(m[0].toUpperCase(), bx + 3, y + 5);
-    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
-    doc.text(String(m[1]), bx + 3, y + 12);
+    doc.rect(bx, y, mw - 3, 12, 'FD');
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
+    doc.text(m[0].toUpperCase(), bx + 3, y + 4);
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
+    doc.text(String(m[1]), bx + 3, y + 9.5);
   });
-  y += 22;
+  y += 16;
 
   // ── Informe ──
   const report = document.getElementById('reportText').value.trim();
   if (report) {
-    if (y + 20 > 285) { doc.addPage(); y = 14; }
+    if (y + 18 > 285) { doc.addPage(); y = 14; }
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
-    doc.text('INFORME / CONCLUSIÓN', mL, y); y += 5;
-    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 6;
-    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(50,50,50);
-    const lines = doc.splitTextToSize(report, pgW);
-    lines.forEach(ln => { if (y > 282) { doc.addPage(); y = 14; } doc.text(ln, mL, y); y += 5; });
-    y += 4;
+    doc.text('INFORME', mL, y); y += 4;
+    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 4;
+
+    // Separar conclusión
+    const reportLines = (document.getElementById('reportText').value || '').split('\n');
+    const concLines = reportLines.filter(l => l.trim().toLowerCase().startsWith('conclusión') || l.trim().toLowerCase().startsWith('conclusion'));
+    const bodyLines = reportLines.filter(l => !l.trim().toLowerCase().startsWith('conclusión') && !l.trim().toLowerCase().startsWith('conclusion'));
+
+    // Imprimir cuerpo del informe (sin conclusión)
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(50,50,50);
+    const lines = doc.splitTextToSize(bodyLines.join('\n'), pgW);
+    lines.forEach(ln => { if (y > 282) { doc.addPage(); y = 14; } doc.text(ln, mL, y); y += 4.5; });
+
+    // Imprimir conclusión en recuadro con fondo suave
+    if (concLines.length) {
+      y += 4;
+      const concText = concLines.join(' ');
+      const concWrapped = doc.splitTextToSize(concText, pgW - 8);
+      const concH = concWrapped.length * 5 + 8;
+      doc.setFillColor(245, 247, 252);
+      doc.setDrawColor(ACC[0], ACC[1], ACC[2]);
+      doc.setLineWidth(0.4);
+      doc.rect(mL, y, pgW, concH, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(ACC[0], ACC[1], ACC[2]);
+      doc.text('CONCLUSIÓN', mL + 4, y + 5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(40, 40, 40);
+      doc.text(concWrapped, mL + 4, y + 10);
+      y += concH + 4;
+    }
   }
 
   // ── Firma ──
-  if (y + 24 > 290) { doc.addPage(); y = 20; }
-  y = Math.max(y, 250);
-  doc.setDrawColor(120,120,120); doc.setLineWidth(0.3); doc.line(mR - 70, y, mR, y); y += 5;
-  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(40,40,40);
+  if (y + 20 > 285) { doc.addPage(); y = 20; }
+  y = Math.max(y, 246);
+  doc.setDrawColor(120,120,120); doc.setLineWidth(0.3); doc.line(mR - 70, y, mR, y); y += 4;
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
   const firma = sv('med-nombre') || '';
-  doc.text(firma, mR, y, { align: 'right' }); y += 5;
-  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(90,90,90);
+  doc.text(firma, mR, y, { align: 'right' }); y += 4;
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(90,90,90);
   const mat = sv('med-matricula'); if (mat) { doc.text('Matrícula: ' + mat, mR, y, { align: 'right' }); y += 4; }
   const inst = sv('med-centro'), ciu = sv('med-lugar');
   if (inst || ciu) doc.text([inst, ciu].filter(Boolean).join(' · '), mR, y, { align: 'right' });
