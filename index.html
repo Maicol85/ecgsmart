@@ -352,17 +352,9 @@
         </div>
       </div>
       <div id="uploadActions" style="display:none;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-        <button class="btn btn-green" id="btnRaw"
-          onclick="analyzeRaw()" disabled>
-          📷 Analizar ECG
-        </button>
-        <button class="btn btn-ghost" id="btnAnalyze"
-          onclick="analyze()" disabled>
-          ✂️ Analizar con recorte automático
-        </button>
-        <button class="btn btn-ghost" onclick="clearImages()">
-          🗑 Quitar todas
-        </button>
+        <button class="btn btn-green" id="btnRaw" onclick="analyzeRaw()" disabled>📷 Analizar ECG</button>
+        <button class="btn btn-ghost" id="btnAnalyze" onclick="analyze()" disabled>✂️ Analizar con recorte automático</button>
+        <button class="btn btn-ghost" onclick="clearImages()">🗑 Quitar todas</button>
       </div>
       <div class="progress" id="progress"><div class="spinner"></div><span id="progressMsg">Analizando ECG con Claude Vision…</span></div>
     </div>
@@ -399,7 +391,37 @@
           </div>
           <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
             <button class="btn btn-primary" onclick="generarConIA()" id="btnUsarIA">🤖 Generar con IA</button>
+            <button class="btn btn-ghost" id="btnPreinforme"
+              onclick="mostrarPreinforme()"
+              style="background:var(--bg3);border:1px solid var(--border)">
+              📋 Preinforme manual
+            </button>
             <button class="btn btn-ghost" onclick="document.getElementById('reportText').value=''">Limpiar</button>
+          </div>
+          <div id="preinformePanel" style="display:none;
+            flex-direction:column;gap:8px;margin-bottom:12px;">
+            <div style="font-size:11px;color:var(--text2);
+              font-weight:600;margin-bottom:4px;">
+              Completá los campos y se armará el informe:
+            </div>
+            <input class="in" id="pi-ritmo" type="text"
+              placeholder="Ritmo sinusal. FC: ___ cpm"
+              oninput="armarPreinforme()">
+            <input class="in" id="pi-pr" type="text"
+              placeholder="Onda P presente. Intervalo PR: ___ ms"
+              oninput="armarPreinforme()">
+            <input class="in" id="pi-eje" type="text"
+              placeholder="Eje eléctrico medio: ___ grados"
+              oninput="armarPreinforme()">
+            <input class="in" id="pi-qrs" type="text"
+              placeholder="Despolarización: QRS ___ ms, morfología ___"
+              oninput="armarPreinforme()">
+            <input class="in" id="pi-st" type="text"
+              placeholder="Repolarización: Segmento ST ___ · Onda T ___"
+              oninput="armarPreinforme()">
+            <input class="in" id="pi-conclusion" type="text"
+              placeholder="Conclusión: ___"
+              oninput="armarPreinforme()">
           </div>
           <textarea class="in" id="reportText" placeholder="Informe narrativo (hallazgos principales y conclusión). Editable." style="min-height:150px"></textarea>
         </div>
@@ -1494,11 +1516,11 @@ function exportPDF() {
   doc.text('MEDICIONES', mL, y); y += 4;
   doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 4;
   const meas = [
-    ['Frecuencia', (document.getElementById('meas-fc').value||'—') + ' lpm'],
-    ['PR', (document.getElementById('meas-pr').value||'—') + ' ms'],
-    ['QRS', (document.getElementById('meas-qrs').value||'—') + ' ms'],
-    ['QT/QTc', (document.getElementById('meas-qt').value||'—') + ' ms'],
-    ['Eje', (document.getElementById('meas-eje').value||'—') + '°'],
+    ['Frecuencia', document.getElementById('meas-fc').value || '—'],
+    ['PR', document.getElementById('meas-pr').value || '—'],
+    ['QRS', document.getElementById('meas-qrs').value || '—'],
+    ['QT/QTc', document.getElementById('meas-qt').value || '—'],
+    ['Eje', document.getElementById('meas-eje').value || '—'],
   ];
   const mw = pgW / 5;
   meas.forEach((m, i) => {
@@ -1585,6 +1607,40 @@ function getMedLines() {
   const c = sv('med-lugar');
   const parts = [n, m ? 'Mat. ' + m : '', i, c].filter(Boolean);
   return { linea1: parts.join('  ·  ') };
+}
+
+function mostrarPreinforme() {
+  const panel = document.getElementById('preinformePanel');
+  if (!panel) return;
+  const visible = panel.style.display === 'flex';
+  panel.style.display = visible ? 'none' : 'flex';
+  if (!visible) {
+    // Limpiar campos
+    ['pi-ritmo','pi-pr','pi-eje','pi-qrs',
+     'pi-st','pi-conclusion'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.getElementById('reportText').value = '';
+  }
+}
+
+function armarPreinforme() {
+  const get = id => {
+    const el = document.getElementById(id);
+    return el && el.value.trim() ? el.value.trim() : null;
+  };
+  const lineas = [
+    get('pi-ritmo'),
+    get('pi-pr'),
+    get('pi-eje'),
+    get('pi-qrs'),
+    get('pi-st'),
+    get('pi-conclusion')
+      ? 'Conclusión: ' + get('pi-conclusion') : null,
+  ].filter(Boolean);
+  const ta = document.getElementById('reportText');
+  if (ta) ta.value = lineas.join('\n');
 }
 window.exportPDF = exportPDF;
 </script>
