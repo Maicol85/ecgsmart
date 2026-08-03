@@ -1524,51 +1524,108 @@ function exportPDF() {
   const mL = 12, mR = 198, pgW = 186, W = 210;
   let y = 0;
 
-  // ── Encabezado médico ──
-  const hdrH = 20;
-  doc.setFillColor(ACC[0], ACC[1], ACC[2]); doc.rect(0, 0, W, hdrH, 'F');
+  // ── Encabezado (estilo EcoSmart, fondo = color del tema seleccionado) ──
+  doc.setFillColor(ACC[0], ACC[1], ACC[2]);
+  doc.rect(0, 0, W, 22, 'F');
+
+  // Logo si existe (esquina superior derecha)
   const logo = localStorage.getItem('ecgsmart_logo');
   if (logo) { try { const lp = doc.getImageProperties(logo); const lh = 14, lw = lp.width * lh / lp.height; doc.addImage(logo, lp.fileType || undefined, W - lw - 6, 3, lw, lh); } catch(e){} }
+
+  // Título centrado
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(16);
   doc.setTextColor(255,255,255);
-  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('ECGsmart', W / 2, 10, { align: 'center' });
-  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text('Electrocardiograma de 12 derivaciones', W / 2, 15, { align: 'center' });
-  const med = getMedLines();
-  doc.setFontSize(7);
-  if (med.linea1) doc.text(med.linea1, mL, 19);
-  y = hdrH + 4;
+  doc.text('Informe Electrocardiograma', W/2, 10, { align: 'center' });
 
-  // ── Datos paciente ──
-  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
-  doc.text('DATOS DEL PACIENTE', mL, y);
-  doc.setFont('helvetica','normal'); doc.setFontSize(10);
-  doc.text('Fecha: ' + fmtFecha(document.getElementById('pac-fecha').value || ''), mR, y, { align:'right' });
-  y += 3;
-  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL,y,mR,y); y += 6;
-  const pac  = document.getElementById('pac-nombre').value || '—';
-  const ci   = document.getElementById('pac-ci').value || '—';
-  const edad = document.getElementById('pac-edad').value || '—';
-  const sxV  = document.getElementById('pac-sexo').value;
-  const sexo = sxV==='M'?'M':sxV==='F'?'F':'—';
-  const dcEl = document.getElementById('pac-dc');
-  const dc   = dcEl ? (dcEl.value||'—') : '—';
-  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(60,60,60);
-  doc.text('Paciente: '+pac, mL, y);
-  doc.text('CI: '+ci, mL+70, y);
-  doc.text('Edad: '+edad, mL+110, y);
-  doc.text('Sexo: '+sexo, mL+135, y);
-  doc.text('DC: '+dc, mL+155, y);
-  y += 8;
-
-  // ── Técnica ──
+  // Subtítulo
   doc.setFont('helvetica','normal');
+  doc.setFontSize(9);
+  doc.setTextColor(148,163,184);
+  doc.text('Electrocardiograma de 12 derivaciones', W/2, 16, { align: 'center' });
+
+  // Datos del médico a la izquierda
   doc.setFontSize(8);
-  doc.setTextColor(120,120,120);
+  doc.setTextColor(203,213,225);
+  const medNombre = sv('med-nombre') || '';
+  const medMat = sv('med-matricula') || '';
+  const medLugar = sv('med-lugar') || '';
+  let medLine = medNombre;
+  if (medMat) medLine += '  ·  Mat. ' + medMat;
+  if (medLugar) medLine += '  ·  ' + medLugar;
+  doc.text(medLine, mL, 20);
+
+  y = 26;  // inicio del contenido después del header
+
+  // ── Datos del paciente (tabla con bordes, estilo EcoSmart) ──
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(10);
+  doc.setTextColor(40,40,40);
+  doc.text('DATOS DEL PACIENTE', mL, y); y += 3;
+
+  // Línea separadora (color del tema)
+  doc.setDrawColor(ACC[0], ACC[1], ACC[2]);
+  doc.setLineWidth(0.4);
+  doc.line(mL, y, mR, y); y += 4;
+
+  // Datos del paciente
+  const pac  = document.getElementById('pac-nombre')?.value || '—';
+  const ci   = document.getElementById('pac-ci')?.value || '—';
+  const edad = document.getElementById('pac-edad')?.value || '—';
+  const sxv  = document.getElementById('pac-sexo')?.value || '';
+  const sexo = sxv==='M'?'Masculino':sxv==='F'?'Femenino':'—';
+  const fecha= fmtFecha(document.getElementById('pac-fecha')?.value||'');
+  const dc   = document.getElementById('pac-dc')?.value || '—';
+
+  // Tabla fila 1 — 5 celdas [label, valor, anchoMM, líneas máx]
+  const celdas1 = [
+    { l:'Nombre', v: pac,   w: 60, lineas: 2 },
+    { l:'Edad',   v: edad + ' años', w: 25 },
+    { l:'Sexo',   v: sexo,  w: 30 },
+    { l:'CI/CPF', v: ci,    w: 40 },
+    { l:'Fecha',  v: fecha, w: 27 },
+  ];
+
+  let cx = mL;
+  const cellH1 = 16;   // fila 1 más alta: permite 2 líneas en el nombre
+  const cellH = 12;    // fila 2
+
+  // Dibujar celdas fila 1 (el nombre puede ocupar hasta 2 líneas)
+  celdas1.forEach(c => {
+    doc.setDrawColor(200,200,200); doc.setLineWidth(0.2);
+    doc.rect(cx, y, c.w, cellH1);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
+    doc.text(c.l, cx+2, y+4);
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(30,30,30);
+    const maxW = c.w - 4;
+    const lineas = doc.splitTextToSize(c.v, maxW).slice(0, c.lineas || 1);
+    lineas.forEach((ln, i) => doc.text(ln, cx+2, y+9 + i*4));
+    cx += c.w;
+  });
+  y += cellH1;
+
+  // Fila 2 — DC y técnica
   const calib = getCalib ? getCalib() : {velocidad:25, voltaje:10};
-  doc.text(
-    'Técnica: ' + calib.velocidad + ' mm/s · ' + calib.voltaje + ' mm/mV · AC 50Hz',
-    mL, y
-  );
-  y += 5;
+  const tecnica = 'Técnica: ' + calib.velocidad + ' mm/s · ' + calib.voltaje + ' mm/mV · AC 50Hz';
+
+  const celdas2 = [
+    { l:'Dato clínico / Motivo', v: dc,      w: 120 },
+    { l:'Técnica',               v: tecnica, w: 62  },
+  ];
+
+  cx = mL;
+  celdas2.forEach(c => {
+    doc.setDrawColor(200,200,200); doc.setLineWidth(0.2);
+    doc.rect(cx, y, c.w, cellH);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
+    doc.text(c.l, cx+2, y+4);
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(30,30,30);
+    const maxW = c.w - 4;
+    const txt = doc.splitTextToSize(c.v, maxW)[0] || '';
+    doc.text(txt, cx+2, y+9);
+    cx += c.w;
+  });
+  y += cellH + 5;
 
   // ── ECG: grilla de recortes (normal) o imagen original completa (sin editar) ──
   y += 4;
