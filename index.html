@@ -1463,7 +1463,7 @@ function exportPDF() {
   const med = getMedLines();
   doc.setFontSize(7);
   if (med.linea1) doc.text(med.linea1, mL, 19);
-  y = hdrH + 6;
+  y = hdrH + 4;
 
   // ── Datos paciente ──
   doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
@@ -1471,7 +1471,7 @@ function exportPDF() {
   doc.setFont('helvetica','normal'); doc.setFontSize(10);
   doc.text('Fecha: ' + fmtFecha(document.getElementById('pac-fecha').value || ''), mR, y, { align:'right' });
   y += 3;
-  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL,y,mR,y); y += 5;
+  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL,y,mR,y); y += 4;
   const pac  = document.getElementById('pac-nombre').value || '—';
   const ci   = document.getElementById('pac-ci').value || '—';
   const edad = document.getElementById('pac-edad').value || '—';
@@ -1485,12 +1485,13 @@ function exportPDF() {
   doc.text('Edad: '+edad, mL+110, y);
   doc.text('Sexo: '+sexo, mL+135, y);
   doc.text('DC: '+dc, mL+155, y);
-  y += 8;
+  y += 5;
 
   // ── ECG: grilla de recortes (normal) o imagen original completa (sin editar) ──
   if (S.rawMode) {
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
-    doc.text('ELECTROCARDIOGRAMA', mL, y); y += 4;
+    doc.text('ELECTROCARDIOGRAMA', mL, y); y += 3;
+    const shrinkImg = (S.images || []).length >= 2 ? 0.90 : 0.95;
     (S.images || []).forEach(im => {
       const src = im.orig || im.blob;
       if (!src) return;
@@ -1499,16 +1500,17 @@ function exportPDF() {
         let iw = pgW, ih = pr.height * iw / pr.width;
         const maxH = 150;
         if (ih > maxH) { ih = maxH; iw = pr.width * ih / pr.height; }
+        ih *= shrinkImg; iw *= shrinkImg;
         if (y + ih > 285) { doc.addPage(); y = 14; }
         const ix = mL + (pgW - iw) / 2;
         doc.addImage(src, pr.fileType || 'JPEG', ix, y, iw, ih);
         y += ih + 4;
       } catch(e) {}
     });
-    y += 3;
+    y += 4;
   } else {
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
-    doc.text('ELECTROCARDIOGRAMA · 12 DERIVACIONES', mL, y); y += 4;
+    doc.text('ELECTROCARDIOGRAMA · 12 DERIVACIONES', mL, y); y += 3;
     const gx = mL, gy = y, gw = pgW, gh = 99;
     // Fondo blanco limpio (sin cuadriculado) con marco exterior fino
     doc.setFillColor(255,255,255); doc.setDrawColor(210,210,210); doc.setLineWidth(0.2);
@@ -1560,7 +1562,7 @@ function exportPDF() {
       doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
       doc.text(String(m[1]), bx + 3, y + 9.5);
     });
-    y += 18;
+    y += 16;
   }
 
   // ── Informe ──
@@ -1569,7 +1571,7 @@ function exportPDF() {
     if (y + 18 > 285) { doc.addPage(); y = 14; }
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
     doc.text('INFORME', mL, y); y += 4;
-    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 4;
+    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 3;
 
     // Separar conclusión
     const reportLines = (document.getElementById('reportText').value || '').split('\n');
@@ -1592,7 +1594,7 @@ function exportPDF() {
       doc.text('CONCLUSIÓN', mL, y); y += 3;
       doc.setDrawColor(ACC[0], ACC[1], ACC[2]);
       doc.setLineWidth(0.5);
-      doc.line(mL, y, mR, y); y += 5;
+      doc.line(mL, y, mR, y); y += 3;
       // Texto de la conclusión
       const concTextoLimpio = concLines.join(' ')
         .replace(/^conclusi[oó]n\s*:\s*/i, '').trim();
