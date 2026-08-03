@@ -351,11 +351,17 @@
           <span id="calibHint" style="font-size:11px;color:var(--text2);font-style:italic;"></span>
         </div>
       </div>
-      <div id="uploadActions" style="display:none;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-        <button class="btn btn-green" id="btnRaw" onclick="analyzeRaw()" disabled>📷 Analizar ECG</button>
-        <button class="btn btn-ghost" id="btnAnalyze" onclick="analyze()" disabled>✂️ Analizar con recorte automático</button>
-        <button class="btn btn-ghost" onclick="clearImages()">🗑 Quitar todas</button>
-      </div>
+<div id="uploadActions" style="display:none;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap;align-items:center;">
+  <button class="btn btn-green" id="btnRaw" onclick="analyzeRaw()" disabled>📷 Vista previa</button>
+  <div style="position:relative;display:inline-block">
+    <button class="btn btn-primary" id="btnIAMenu" onclick="toggleIAMenu()" disabled style="display:flex;align-items:center;gap:6px;">🤖 Analizar con IA <span id="iaMenuArrow" style="font-size:10px;">▼</span></button>
+    <div id="iaDropdown" style="display:none;position:absolute;top:100%;left:0;z-index:50;min-width:200px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.3);margin-top:4px;overflow:hidden;">
+      <button onclick="analyzeIASoloMediciones()" style="width:100%;background:none;border:none;padding:10px 14px;text-align:left;cursor:pointer;color:var(--text);font-size:13px;border-bottom:1px solid var(--border);">📊 Solo mediciones<div style="font-size:10px;color:var(--text2);margin-top:2px;">FC, PR, QRS, QT, Eje</div></button>
+      <button onclick="analyzeIACompleto()" style="width:100%;background:none;border:none;padding:10px 14px;text-align:left;cursor:pointer;color:var(--text);font-size:13px;">📝 Mediciones + informe<div style="font-size:10px;color:var(--text2);margin-top:2px;">Análisis completo con texto</div></button>
+    </div>
+  </div>
+  <button class="btn btn-ghost" onclick="clearImages()">🗑 Quitar</button>
+</div>
       <div class="progress" id="progress"><div class="spinner"></div><span id="progressMsg">Analizando ECG con Claude Vision…</span></div>
     </div>
   </div>
@@ -405,22 +411,22 @@
               Completá los campos y se armará el informe:
             </div>
             <input class="in" id="pi-ritmo" type="text"
-              placeholder="Ritmo sinusal. FC: ___ cpm"
+              placeholder="sinusal, 87 cpm"
               oninput="armarPreinforme()">
             <input class="in" id="pi-pr" type="text"
-              placeholder="Onda P presente. Intervalo PR: ___ ms"
+              placeholder="normal, PR 160 ms"
               oninput="armarPreinforme()">
             <input class="in" id="pi-eje" type="text"
-              placeholder="Eje eléctrico medio: ___ grados"
+              placeholder="+60 grados"
               oninput="armarPreinforme()">
             <input class="in" id="pi-qrs" type="text"
-              placeholder="Despolarización: QRS ___ ms, morfología ___"
+              placeholder="80 ms, estrecho, sin onda Q"
               oninput="armarPreinforme()">
             <input class="in" id="pi-st" type="text"
-              placeholder="Repolarización: Segmento ST ___ · Onda T ___"
+              placeholder="sin alteraciones significativas"
               oninput="armarPreinforme()">
             <input class="in" id="pi-conclusion" type="text"
-              placeholder="Conclusión: ___"
+              placeholder="ECG dentro de límites normales"
               oninput="armarPreinforme()">
           </div>
           <textarea class="in" id="reportText" placeholder="Informe narrativo (hallazgos principales y conclusión). Editable." style="min-height:150px"></textarea>
@@ -491,6 +497,8 @@ let S = {
   rawMode: false,     // true = usar imagen sin editar (sin recorte ni grilla)
   pendingMeas: null,  // mediciones pendientes de confirmar en la vista previa de recorte
   estiloInforme: localStorage.getItem('ecgsmart_estilo_informe') || 'estandar',
+  modoIA: 'completo',
+  usoIA: false,
 };
 
 // Estilo de informe (Estándar / Conciso) — afecta el informe generado por Claude Vision
@@ -1065,15 +1073,40 @@ function renderThumbs() {
     `<button type="button" class="thumb-del" title="Eliminar" onclick="removeImage('${im.id}')">✕</button></div>`).join('');
 }
 function updateAnalyzeBtn() {
-  const btn = document.getElementById('btnAnalyze');
   const raw = document.getElementById('btnRaw');
-  const ok = S.images.length > 0 && !!S.apiKey;
-  btn.disabled = !ok;
-  btn.title = !S.apiKey ? 'Guardá tu API Key primero' : (!S.images.length ? 'Subí al menos una imagen' : '');
-  if (raw) {
-    raw.disabled = !ok;
-    raw.title = !S.apiKey ? 'Guardá tu API Key primero' : (!S.images.length ? 'Subí al menos una imagen' : 'Usa la imagen tal cual, sin recorte ni grilla');
+  const ia  = document.getElementById('btnIAMenu');
+  const okRaw = S.images.length > 0;
+  const ok    = S.images.length > 0 && !!S.apiKey;
+  if (raw) { raw.disabled = !okRaw; }
+  if (ia)  { ia.disabled = !ok; ia.title = !S.apiKey ? 'Guardá tu API Key primero' : ''; }
+}
+
+function toggleIAMenu() {
+  const dd = document.getElementById('iaDropdown');
+  const arrow = document.getElementById('iaMenuArrow');
+  if (!dd) return;
+  const open = dd.style.display === 'block';
+  dd.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.textContent = open ? '▼' : '▲';
+}
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('btnIAMenu');
+  const dd = document.getElementById('iaDropdown');
+  if (dd && menu && !menu.contains(e.target) && !dd.contains(e.target)) {
+    dd.style.display = 'none';
+    const arrow = document.getElementById('iaMenuArrow');
+    if (arrow) arrow.textContent = '▼';
   }
+});
+function analyzeIASoloMediciones() {
+  document.getElementById('iaDropdown').style.display = 'none';
+  S.modoIA = 'mediciones';
+  analyze();
+}
+function analyzeIACompleto() {
+  document.getElementById('iaDropdown').style.display = 'none';
+  S.modoIA = 'completo';
+  analyze();
 }
 
 function getCalib() {
@@ -1102,22 +1135,14 @@ async function analyzeOneImage(image) {
     '- Ganancia: ' + calib.voltaje + ' mm/mV → cada 1 mm vertical = ' + (1/calib.voltaje).toFixed(4) + ' mV | cada cuadrado grande (5mm) = ' + (5/calib.voltaje).toFixed(2) + ' mV\n' +
     'Usá SIEMPRE esta escala para calcular PR, QRS, QT y QTc en milisegundos. NO asumas valores estándar si no coinciden con esta calibración.\n\n';
 
-  const instrInforme = S.estiloInforme === 'conciso'
-    ? 'Redactá un informe ECG MUY CONCISO en español, una línea por item con valores numéricos:\n' +
-      '- Ritmo/FC: [valor lpm]\n' +
-      '- PR/QRS: [valores ms]\n' +
-      '- Eje: [grados]\n' +
-      '- ST-T: [hallazgo]\n' +
-      '- Conclusión: [síntesis]\n\n' +
-      'FC 60-100 lpm = normal. No usar "normal baja" para FC dentro del rango normal.'
-    : 'Redactá un informe electrocardiográfico en español estructurado EXACTAMENTE en este formato, una línea por item, INCLUYENDO los valores numéricos medidos:\n' +
-      '- Ritmo y FC: [ritmo, valor FC en lpm]\n' +
-      '- Onda P / PR: [descripción, valor PR en ms]\n' +
-      '- Eje eléctrico: [valor en grados]\n' +
-      '- QRS: [duración en ms, morfología]\n' +
-      '- ST-T: [descripción]\n' +
-      '- Conclusión: [síntesis]\n\n' +
-      'Sé preciso con los valores numéricos. FC normal = 60-100 lpm. No calificues una FC de 87-95 lpm como "normal baja" — es simplemente normal.';
+  let instrInforme;
+  if (S.modoIA === 'mediciones') {
+    instrInforme = 'NO redactes informe de texto. Solo calculá las mediciones numéricas con precisión usando la calibración indicada.';
+  } else {
+    instrInforme = S.estiloInforme === 'conciso'
+      ? 'Redactá un informe ECG MUY CONCISO en español, una línea por item con valores numéricos:\n- Ritmo y FC: [valor lpm]\n- Onda P / PR: [valor ms]\n- Eje: [grados]\n- QRS: [ms y morfología]\n- ST-T: [hallazgo]\n- Conclusión: [síntesis]\nFC 60-100 lpm = normal. Nunca uses "normal baja".'
+      : 'Redactá un informe ECG en español, una línea por item, INCLUYENDO valores numéricos:\n- Ritmo y FC: [ritmo y valor en lpm]\n- Onda P / PR: [descripción y valor en ms]\n- Eje eléctrico: [valor en grados]\n- QRS: [duración en ms y morfología]\n- ST-T: [descripción]\n- Conclusión: [síntesis]\nFC 60-100 lpm = normal. Nunca uses "normal baja".';
+  }
 
   const prompt = `${calibInfo}Analizás UNA imagen que forma parte de un electrocardiograma (ECG) de 12 derivaciones (foto o escaneo). La imagen puede contener TODAS las derivaciones o solo ALGUNAS.
 
@@ -1178,9 +1203,10 @@ async function analyze() {
   if (!S.images.length) { showError('Subí al menos una imagen de ECG primero.'); return; }
   hideError();
   S.rawMode = false;
+  S.usoIA = true;
   const prog = document.getElementById('progress'), progMsg = document.getElementById('progressMsg');
   prog.classList.add('on');
-  document.getElementById('btnAnalyze').disabled = true;
+  { const ab = document.getElementById('btnAnalyze'); if (ab) ab.disabled = true; }
   { const rb = document.getElementById('btnRaw'); if (rb) rb.disabled = true; }
 
   try {
@@ -1284,9 +1310,10 @@ async function analyzeRaw() {
   if (!S.images.length) { showError('Subí al menos una imagen de ECG primero.'); return; }
   hideError();
   S.rawMode = true;
+  S.usoIA = false;
   const prog = document.getElementById('progress'), progMsg = document.getElementById('progressMsg');
   prog.classList.add('on');
-  document.getElementById('btnAnalyze').disabled = true;
+  { const ab = document.getElementById('btnAnalyze'); if (ab) ab.disabled = true; }
   { const rb = document.getElementById('btnRaw'); if (rb) rb.disabled = true; }
   try {
     progMsg.textContent = `Analizando la imagen completa con Claude Vision…`;
@@ -1439,26 +1466,26 @@ function exportPDF() {
   y = hdrH + 6;
 
   // ── Datos paciente ──
-  const pac = document.getElementById('pac-nombre').value || '—';
-  const ci = document.getElementById('pac-ci').value || '—';
-  const edad = document.getElementById('pac-edad').value || '—';
-  const sx = document.getElementById('pac-sexo').value; const sexo = sx==='M'?'Masculino':sx==='F'?'Femenino':'—';
-  const fecha = document.getElementById('pac-fecha').value || '—';
-  doc.setTextColor(40,40,40); doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
   doc.text('DATOS DEL PACIENTE', mL, y);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text('Fecha: ' + fmtFecha(fecha), mR, y, { align: 'right' });
-  y += 4;
-  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 5;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  doc.text('Fecha: ' + fmtFecha(document.getElementById('pac-fecha').value || ''), mR, y, { align:'right' });
+  y += 3;
+  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL,y,mR,y); y += 5;
+  const pac  = document.getElementById('pac-nombre').value || '—';
+  const ci   = document.getElementById('pac-ci').value || '—';
+  const edad = document.getElementById('pac-edad').value || '—';
+  const sxV  = document.getElementById('pac-sexo').value;
+  const sexo = sxV==='M'?'M':sxV==='F'?'F':'—';
+  const dcEl = document.getElementById('pac-dc');
+  const dc   = dcEl ? (dcEl.value||'—') : '—';
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(60,60,60);
-  doc.text('Paciente: ' + pac, mL, y);
-  doc.text('C.I.: ' + ci, mL + 80, y);
-  y += 5.5;
-  doc.text('Edad: ' + edad + ' años', mL, y);
-  doc.text('Sexo: ' + sexo, mL + 55, y);
-  doc.text('DC: ' + (document.getElementById('pac-dc').value || '—'), mL + 100, y);
-  y += 7;
+  doc.text('Paciente: '+pac, mL, y);
+  doc.text('CI: '+ci, mL+70, y);
+  doc.text('Edad: '+edad, mL+110, y);
+  doc.text('Sexo: '+sexo, mL+135, y);
+  doc.text('DC: '+dc, mL+155, y);
+  y += 8;
 
   // ── ECG: grilla de recortes (normal) o imagen original completa (sin editar) ──
   if (S.rawMode) {
@@ -1511,28 +1538,30 @@ function exportPDF() {
   }
 
   // ── Mediciones ──
-  if (y + 22 > 285) { doc.addPage(); y = 14; }
-  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
-  doc.text('MEDICIONES', mL, y); y += 4;
-  doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 4;
-  const meas = [
-    ['Frecuencia', document.getElementById('meas-fc').value || '—'],
-    ['PR', document.getElementById('meas-pr').value || '—'],
-    ['QRS', document.getElementById('meas-qrs').value || '—'],
-    ['QT/QTc', document.getElementById('meas-qt').value || '—'],
-    ['Eje', document.getElementById('meas-eje').value || '—'],
-  ];
-  const mw = pgW / 5;
-  meas.forEach((m, i) => {
-    const bx = mL + i * mw;
-    doc.setFillColor(245,247,250); doc.setDrawColor(220,225,235); doc.setLineWidth(0.2);
-    doc.rect(bx, y, mw - 3, 12, 'FD');
-    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
-    doc.text(m[0].toUpperCase(), bx + 3, y + 4);
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
-    doc.text(String(m[1]), bx + 3, y + 9.5);
-  });
-  y += 18;
+  if (S.usoIA) {
+    if (y + 22 > 285) { doc.addPage(); y = 14; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
+    doc.text('MEDICIONES', mL, y); y += 4;
+    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mR, y); y += 4;
+    const meas = [
+      ['Frecuencia', document.getElementById('meas-fc').value || '—'],
+      ['PR', document.getElementById('meas-pr').value || '—'],
+      ['QRS', document.getElementById('meas-qrs').value || '—'],
+      ['QT/QTc', document.getElementById('meas-qt').value || '—'],
+      ['Eje', document.getElementById('meas-eje').value || '—'],
+    ];
+    const mw = pgW / 5;
+    meas.forEach((m, i) => {
+      const bx = mL + i * mw;
+      doc.setFillColor(245,247,250); doc.setDrawColor(220,225,235); doc.setLineWidth(0.2);
+      doc.rect(bx, y, mw - 3, 12, 'FD');
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
+      doc.text(m[0].toUpperCase(), bx + 3, y + 4);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
+      doc.text(String(m[1]), bx + 3, y + 9.5);
+    });
+    y += 18;
+  }
 
   // ── Informe ──
   const report = document.getElementById('reportText').value.trim();
@@ -1626,21 +1655,20 @@ function mostrarPreinforme() {
 }
 
 function armarPreinforme() {
-  const get = id => {
-    const el = document.getElementById(id);
-    return el && el.value.trim() ? el.value.trim() : null;
-  };
-  const lineas = [
-    get('pi-ritmo'),
-    get('pi-pr'),
-    get('pi-eje'),
-    get('pi-qrs'),
-    get('pi-st'),
-    get('pi-conclusion')
-      ? 'Conclusión: ' + get('pi-conclusion') : null,
-  ].filter(Boolean);
+  const campos = [
+    { id: 'pi-ritmo',      prefix: 'Ritmo y FC: ' },
+    { id: 'pi-pr',         prefix: 'Onda P / PR: ' },
+    { id: 'pi-eje',        prefix: 'Eje eléctrico: ' },
+    { id: 'pi-qrs',        prefix: 'QRS: ' },
+    { id: 'pi-st',         prefix: 'ST-T: ' },
+    { id: 'pi-conclusion', prefix: 'Conclusión: ' },
+  ];
+  const lineas = campos
+    .map(c => { const el = document.getElementById(c.id); const val = el && el.value.trim(); return val ? c.prefix + val : null; })
+    .filter(Boolean);
   const ta = document.getElementById('reportText');
   if (ta) ta.value = lineas.join('\n');
+  S.usoIA = false;
 }
 window.exportPDF = exportPDF;
 </script>
