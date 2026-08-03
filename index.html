@@ -257,6 +257,14 @@
         <option value="2">ECG_Fecha</option>
       </select>
     </span>
+    <button onclick="abrirAyuda()" title="Ayuda"
+      style="background:none;
+      border:1px solid rgba(255,255,255,0.2);
+      border-radius:50%;width:32px;height:32px;
+      color:var(--text);cursor:pointer;
+      font-size:14px;font-weight:700;">
+      ?
+    </button>
     <button class="btn btn-ghost" onclick="cerrarSesion()" title="Cerrar sesión">🔒 Cerrar</button>
   </div>
 </header>
@@ -1597,61 +1605,58 @@ function exportPDF() {
     y = gy + gh + 6;
   }
 
-  // ── Mediciones (cuadro compacto a la derecha) + Informe (columna izquierda) ──
+  // ── Mediciones (columna derecha) + Informe (columna izquierda) ──
   const report = document.getElementById('reportText').value.trim();
   if ((S.usoIA || report) && y + 24 > 285) { doc.addPage(); y = 14; }
-  const yMeas = y;
-  const measX = mR - 55, measW = 55;
-  let measBottom = yMeas;
+  const yInicioBloque = y;
+  const infW = 120;          // ancho columna informe
+  const measX = mL + 125;    // inicio columna mediciones
+  const measW = mR - measX;  // ancho columna mediciones
+  let measBottom = yInicioBloque;
 
-  // Cuadro de mediciones apiladas verticalmente, alineado a la derecha (solo con IA)
+  // Tabla de mediciones apiladas a la derecha (solo con IA)
   if (S.usoIA) {
-    const measRows = [
-      ['FC',     document.getElementById('meas-fc').value  || '—', 'lpm'],
-      ['PR',     document.getElementById('meas-pr').value  || '—', 'ms'],
-      ['QRS',    document.getElementById('meas-qrs').value || '—', 'ms'],
-      ['QT/QTc', document.getElementById('meas-qt').value  || '—', 'ms'],
-      ['EJE',    document.getElementById('meas-eje').value || '—', '°'],
+    const meas = [
+      { label: 'FC',     val: document.getElementById('meas-fc').value  || '—', unit: 'lpm' },
+      { label: 'PR',     val: document.getElementById('meas-pr').value  || '—', unit: 'ms' },
+      { label: 'QRS',    val: document.getElementById('meas-qrs').value || '—', unit: 'ms' },
+      { label: 'QT/QTc', val: document.getElementById('meas-qt').value  || '—', unit: 'ms' },
+      { label: 'EJE',    val: document.getElementById('meas-eje').value || '—', unit: '°' },
     ];
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
-    doc.text('MEDICIONES', measX, yMeas);
-    let my = yMeas + 2;
-    const rowH = 14;
-    measRows.forEach(m => {
-      doc.setFillColor(245,247,250); doc.setDrawColor(220,225,235); doc.setLineWidth(0.2);
-      doc.rect(measX, my, measW, rowH - 2, 'FD');
+    let yM = yInicioBloque;
+    meas.forEach(m => {
       doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
-      doc.text(m[0].toUpperCase() + ' (' + m[2] + ')', measX + 3, my + 4.5);
-      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(40,40,40);
-      doc.text(String(m[1]), measX + 3, my + 10.5);
-      my += rowH;
+      doc.text(m.label, measX, yM); yM += 4;
+      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(40,40,40);
+      doc.text(m.val + ' ' + m.unit, measX, yM); yM += 7;
     });
-    measBottom = my;
+    measBottom = yM;
   }
 
-  // ── Informe (columna izquierda, hasta measX - 5 cuando hay mediciones) ──
+  // ── Informe (cuerpo) en columna izquierda (ancho infW) ──
   let concLines = [];
   if (report) {
-    const infW = S.usoIA ? (measX - 5 - mL) : pgW;
-    const infR = mL + infW;
-    y = yMeas;
+    y = yInicioBloque;
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
     doc.text('INFORME', mL, y); y += 4;
-    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, infR, y); y += 3;
+    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mL + infW, y); y += 3;
 
     // Separar conclusión (se imprime aparte, a ancho completo, más abajo)
     const reportLines = (document.getElementById('reportText').value || '').split('\n');
     concLines = reportLines.filter(l => l.trim().toLowerCase().startsWith('conclusión') || l.trim().toLowerCase().startsWith('conclusion'));
     const bodyLines = reportLines.filter(l => !l.trim().toLowerCase().startsWith('conclusión') && !l.trim().toLowerCase().startsWith('conclusion'));
 
-    // Imprimir SOLO el cuerpo del informe (sin conclusión) en la columna izquierda
+    // Imprimir SOLO el cuerpo (sin conclusión) en la columna izquierda, interlineado compacto
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(50,50,50);
-    const lines = doc.splitTextToSize(bodyLines.join('\n'), infW);
-    lines.forEach(ln => { if (y > 282) { doc.addPage(); y = 14; } doc.text(ln, mL, y); y += 4.5; });
-    y += 4;
+    bodyLines.forEach(linea => {
+      if (!linea.trim()) { y += 1.5; return; }
+      const wrapped = doc.splitTextToSize(linea, infW);
+      wrapped.forEach(ln => { if (y > 282) { doc.addPage(); y = 14; } doc.text(ln, mL, y); y += 3.5; });
+    });
+    y += 3;
   }
 
-  // Continuar debajo del elemento más alto (cuadro de mediciones o cuerpo del informe)
+  // Continuar debajo del elemento más alto (mediciones o cuerpo del informe)
   y = Math.max(measBottom, y);
 
   // ── CONCLUSIÓN a ancho completo (mL a mR), debajo del informe y de las mediciones ──
@@ -1734,6 +1739,210 @@ function armarPreinforme() {
   S.usoIA = false;
 }
 window.exportPDF = exportPDF;
+
+/* ══════════════ EXPORTAR / IMPORTAR informes guardados (JSON) ══════════════ */
+function exportarJSON() {
+  const data = localStorage.getItem('ecgsmart_informes');
+  if (!data) { alert('No hay informes guardados.'); return; }
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ECGsmart_backup_' + new Date().toISOString().split('T')[0] + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importarJSON() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        JSON.parse(ev.target.result); // validar JSON
+        localStorage.setItem('ecgsmart_informes', ev.target.result);
+        alert('Importación exitosa.');
+      } catch {
+        alert('Archivo inválido.');
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+window.exportarJSON = exportarJSON; window.importarJSON = importarJSON;
+
+/* ══════════════ AYUDA — Manual interactivo ══════════════ */
+const AYUDA_SECCIONES = [
+  { tab: '📋 ¿Qué es?', contenido: `
+    <h3 style="color:#0D9488;margin:0 0 10px">
+      ECGSmart</h3>
+    <p>ECGSmart permite analizar fotos de ECG en papel
+    y generar informes electrocardiográficos completos
+    con cálculo automático de intervalos y análisis
+    por inteligencia artificial.</p>
+    <p style="margin-top:10px;padding:10px;
+      background:rgba(13,148,136,0.1);
+      border-radius:8px;font-size:12px;
+      color:#94A3B8;">
+      ⚕️ Herramienta de apoyo clínico. Los resultados
+      deben ser validados por el médico responsable
+      antes de tomar cualquier decisión clínica.
+    </p>` },
+
+  { tab: '⚡ Inicio rápido', contenido: `
+    <h3 style="color:#0D9488;margin:0 0 10px">
+      En funcionamiento en 3 pasos</h3>
+    <ol style="padding-left:20px;display:flex;
+      flex-direction:column;gap:10px;">
+      <li><strong>Completá los datos del paciente</strong>
+        — nombre, documento, edad, sexo y
+        dato clínico/motivo</li>
+      <li><strong>Subí las fotos del ECG</strong>
+        — podés subir la tira de miembros y
+        la de precordiales por separado,
+        o una foto con todo el ECG</li>
+      <li><strong>Elegí el modo de análisis</strong>
+        — Vista previa sin IA, o Analizar con IA
+        para el informe completo</li>
+    </ol>` },
+
+  { tab: '📷 Modos', contenido: `
+    <h3 style="color:#0D9488;margin:0 0 10px">
+      Modos de trabajo</h3>
+    <div style="display:flex;flex-direction:column;
+      gap:12px;">
+      <div style="padding:12px;
+        background:rgba(13,148,136,0.08);
+        border-radius:8px;
+        border-left:3px solid #0D9488;">
+        <strong>📷 Vista previa</strong><br>
+        Muestra el ECG en pantalla sin análisis.
+        Usalo para revisar la foto y completar
+        el informe manualmente con Preinforme manual.
+      </div>
+      <div style="padding:12px;
+        background:rgba(99,102,241,0.08);
+        border-radius:8px;
+        border-left:3px solid #6366F1;">
+        <strong>🤖 Analizar con IA →
+        📊 Solo mediciones</strong><br>
+        Calcula automáticamente FC, PR, QRS,
+        QT/QTc y Eje eléctrico. Sin texto narrativo.
+      </div>
+      <div style="padding:12px;
+        background:rgba(99,102,241,0.08);
+        border-radius:8px;
+        border-left:3px solid #6366F1;">
+        <strong>🤖 Analizar con IA →
+        📝 Mediciones + informe</strong><br>
+        Calcula las mediciones y genera el informe
+        narrativo completo en orden estándar
+        internacional — Ritmo, Eje, P, PR, QRS,
+        ST-T, QT/QTc y Conclusión.
+      </div>
+    </div>` },
+
+  { tab: '📋 Preinforme', contenido: `
+    <h3 style="color:#0D9488;margin:0 0 10px">
+      Preinforme manual</h3>
+    <p>Presioná <strong>📋 Preinforme manual</strong>
+    para completar el informe sin IA.</p>
+    <p style="margin-top:8px;">Completá cada campo
+    con el hallazgo correspondiente:</p>
+    <ul style="padding-left:20px;margin-top:8px;
+      display:flex;flex-direction:column;gap:6px;">
+      <li><strong>Ritmo y FC:</strong>
+        ej. "sinusal, 87 cpm"</li>
+      <li><strong>Onda P / PR:</strong>
+        ej. "normal, PR 160 ms"</li>
+      <li><strong>Eje eléctrico:</strong>
+        ej. "+60 grados"</li>
+      <li><strong>QRS:</strong>
+        ej. "80 ms, estrecho, sin onda Q"</li>
+      <li><strong>ST-T:</strong>
+        ej. "sin alteraciones"</li>
+      <li><strong>Conclusión:</strong>
+        ej. "ECG dentro de límites normales"</li>
+    </ul>
+    <p style="margin-top:10px;font-size:12px;
+      color:#94A3B8;">Con preinforme manual la tabla
+      de mediciones no aparece en el PDF.</p>` },
+
+  { tab: '📄 PDF', contenido: `
+    <h3 style="color:#0D9488;margin:0 0 10px">
+      Exportación a PDF</h3>
+    <ul style="padding-left:20px;display:flex;
+      flex-direction:column;gap:8px;">
+      <li>Presioná <strong>⬇️ PDF</strong>
+        para exportar el informe</li>
+      <li>El PDF incluye: datos del paciente,
+        técnica, imágenes del ECG, mediciones
+        (si se usó IA), informe narrativo
+        estructurado, conclusión y firma</li>
+      <li>Todo entra en una sola hoja A4</li>
+      <li>Podés elegir el color del informe
+        con los botones de color del header</li>
+    </ul>` },
+
+  { tab: '💾 Guardados', contenido: `
+    <h3 style="color:#0D9488;margin:0 0 10px">
+      Guardar y gestionar informes</h3>
+    <ul style="padding-left:20px;display:flex;
+      flex-direction:column;gap:8px;">
+      <li><strong>💾 Guardar</strong> —
+        guarda el informe actual en el dispositivo
+      </li>
+      <li><strong>📋 Guardados</strong> —
+        abre la lista de todos los informes
+        guardados para revisarlos o exportarlos
+      </li>
+      <li><strong>📤 Exportar</strong> —
+        descarga todos los informes como archivo
+        de respaldo en tu computadora</li>
+      <li><strong>📥 Importar</strong> —
+        restaura informes desde un archivo
+        de respaldo previo</li>
+    </ul>
+    <p style="margin-top:10px;font-size:12px;
+      color:#94A3B8;">Los informes se guardan en
+      este dispositivo. Realizá exportaciones
+      periódicas como respaldo.</p>` },
+];
+
+function abrirAyuda() {
+  const m = document.getElementById('modalAyuda');
+  if (m) { m.style.display = 'flex'; renderAyudaTabs(0); }
+}
+function cerrarAyuda() {
+  const m = document.getElementById('modalAyuda');
+  if (m) m.style.display = 'none';
+}
+function renderAyudaTabs(activo) {
+  const tabs = document.getElementById('ayudaTabs');
+  const cont = document.getElementById('ayudaContenido');
+  if (!tabs || !cont) return;
+  tabs.innerHTML = AYUDA_SECCIONES.map((s,i) =>
+    `<button onclick="renderAyudaTabs(${i})"
+      style="background:none;border:none;
+      padding:8px 14px;cursor:pointer;
+      font-size:12px;white-space:nowrap;
+      color:${i===activo?'#0D9488':'#64748B'};
+      font-weight:${i===activo?'700':'400'};
+      border-bottom:2px solid ${i===activo?
+        '#0D9488':'transparent'};">
+      ${s.tab}
+    </button>`
+  ).join('');
+  cont.innerHTML = AYUDA_SECCIONES[activo].contenido;
+}
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') cerrarAyuda();
+});
+window.abrirAyuda = abrirAyuda; window.cerrarAyuda = cerrarAyuda; window.renderAyudaTabs = renderAyudaTabs;
 </script>
 
 <!-- ══ AVISO LEGAL tras login exitoso (estilo ErgoSmart) ══ -->
@@ -1834,6 +2043,61 @@ window.exportPDF = exportPDF;
     box-shadow:0 2px 8px rgba(0,0,0,0.3);">
     📋 Guardados
   </button>
+  <button onclick="exportarJSON()"
+    style="background:#0369A1;color:white;
+    border:none;border-radius:8px;
+    padding:10px 16px;font-size:13px;
+    font-weight:600;cursor:pointer;
+    white-space:nowrap;
+    box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+    📤 Exportar
+  </button>
+  <button onclick="importarJSON()"
+    style="background:#475569;color:white;
+    border:none;border-radius:8px;
+    padding:10px 16px;font-size:13px;
+    font-weight:600;cursor:pointer;
+    white-space:nowrap;
+    box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+    📥 Importar
+  </button>
+</div>
+
+<!-- ══ AYUDA — Manual interactivo ══ -->
+<div id="modalAyuda" style="display:none;
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.8);z-index:9999;
+  align-items:center;justify-content:center;
+  padding:20px;">
+  <div style="background:var(--bg2,#1E293B);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:16px;width:100%;max-width:600px;
+    max-height:85vh;overflow:hidden;
+    display:flex;flex-direction:column;">
+    <div style="padding:20px 24px 0;display:flex;
+      justify-content:space-between;
+      align-items:center;">
+      <div>
+        <div style="font-size:18px;font-weight:700;
+          color:#0D9488;">📖 Manual de ECGSmart</div>
+        <div style="font-size:12px;color:#64748B;
+          margin-top:2px;">Guía de uso rápido</div>
+      </div>
+      <button onclick="cerrarAyuda()"
+        style="background:none;border:none;
+        color:#64748B;font-size:20px;
+        cursor:pointer;">✕</button>
+    </div>
+    <div id="ayudaTabs" style="display:flex;
+      gap:4px;padding:12px 24px 0;overflow-x:auto;
+      border-bottom:1px solid rgba(255,255,255,0.07);">
+    </div>
+    <div id="ayudaContenido"
+      style="padding:20px 24px;overflow-y:auto;
+      flex:1;font-size:13px;color:#CBD5E1;
+      line-height:1.7;">
+    </div>
+  </div>
 </div>
 
 </body>
