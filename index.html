@@ -1646,6 +1646,7 @@ function mostrarPreinforme() {
   const visible = panel.style.display === 'flex';
   panel.style.display = visible ? 'none' : 'flex';
   if (!visible) {
+    S.usoIA = false;
     // Limpiar campos
     ['pi-ritmo','pi-pr','pi-eje','pi-qrs',
      'pi-st','pi-conclusion'].forEach(id => {
