@@ -241,8 +241,6 @@
   <div class="hdr-btns">
     <button class="btn btn-ghost" id="theme-toggle-btn" onclick="toggleTheme()" title="Cambiar modo día/noche">🌙 Noche</button>
     <button class="btn btn-ghost" onclick="limpiar()">🗑 Limpiar</button>
-    <button class="btn btn-primary" onclick="generarInforme()">📝 Informe</button>
-    <button class="btn btn-save" onclick="guardar()" style="background:#6c5ce7;color:#fff;">💾 Guardar</button>
     <span style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;">
       <button class="btn btn-green" onclick="exportPDF()">⬇️ PDF</button>
       <span style="display:inline-flex;gap:4px;" title="Color del PDF">
@@ -1172,7 +1170,7 @@ async function analyzeOneImage(image) {
   } else {
     instrInforme = S.estiloInforme === 'conciso'
       ? 'Informe ECG MUY CONCISO en español, orden estándar, con valores numéricos:\n- Ritmo/FC: [valor lpm]\n- Eje/PR/QRS: [valores]\n- ST-T: [hallazgo]\n- QT/QTc: [valores ms — Normal/Prolongado/Corto]\n- Conclusión: [síntesis]\nFC normal = 60-100 lpm. QTc >450ms H />460ms M = prolongado.'
-      : 'Redactá un informe ECG en español siguiendo el orden estándar internacional, una línea por item, INCLUYENDO valores numéricos:\n- Ritmo y FC: [ritmo y valor en lpm]\n- Eje eléctrico: [valor en grados — Normal/LAD/RAD]\n- Onda P: [presente/ausente, morfología si relevante]\n- Intervalo PR: [valor en ms — Normal/Corto/Largo]\n- QRS: [duración en ms, morfología, onda Q si presente]\n- ST-T: [sin alteraciones / elevación / depresión — derivaciones afectadas si patológico]\n- QT/QTc: [valor QT ms / valor QTc ms — Normal / Prolongado / Corto]\n- Conclusión: [síntesis diagnóstica]\n\nREGLAS:\n- FC 60-100 lpm = normal. Nunca uses "normal baja".\n- QT y QTc siempre en esta línea del informe con sus valores numéricos.\n- Si QTc >450ms en hombre: agregar "— PROLONGADO".\n- Si QTc >460ms en mujer: agregar "— PROLONGADO".\n- Si QTc <350ms: agregar "— CORTO".\n- ST y T se reportan juntos como ST-T.\n- Si todo es normal, cada línea debe decirlo brevemente sin redundancias.';
+      : 'FORMATO OBLIGATORIO: cada ítem debe ir en una línea separada con un salto de línea entre cada uno. NO juntes todo en un párrafo. El formato es:\nRitmo y FC: [texto]\nEje eléctrico: [texto]\nOnda P: [texto]\nIntervalo PR: [texto]\nQRS: [texto]\nST-T: [texto]\nQT/QTc: [texto]\nConclusión: [texto]\n\nRedactá un informe ECG en español siguiendo el orden estándar internacional, una línea por item, INCLUYENDO valores numéricos:\n- Ritmo y FC: [ritmo y valor en lpm]\n- Eje eléctrico: [valor en grados — Normal/LAD/RAD]\n- Onda P: [presente/ausente, morfología si relevante]\n- Intervalo PR: [valor en ms — Normal/Corto/Largo]\n- QRS: [duración en ms, morfología, onda Q si presente]\n- ST-T: [sin alteraciones / elevación / depresión — derivaciones afectadas si patológico]\n- QT/QTc: [valor QT ms / valor QTc ms — Normal / Prolongado / Corto]\n- Conclusión: [síntesis diagnóstica]\n\nREGLAS:\n- FC 60-100 lpm = normal. Nunca uses "normal baja".\n- QT y QTc siempre en esta línea del informe con sus valores numéricos.\n- Si QTc >450ms en hombre: agregar "— PROLONGADO".\n- Si QTc >460ms en mujer: agregar "— PROLONGADO".\n- Si QTc <350ms: agregar "— CORTO".\n- ST y T se reportan juntos como ST-T.\n- Si todo es normal, cada línea debe decirlo brevemente sin redundancias.';
   }
 
   const prompt = `${calibInfo}Analizás UNA imagen que forma parte de un electrocardiograma (ECG) de 12 derivaciones (foto o escaneo). La imagen puede contener TODAS las derivaciones o solo ALGUNAS.
@@ -1811,6 +1809,40 @@ window.exportPDF = exportPDF;
       CeiboMed · Tecnología clínica con raíces
     </div>
   </div>
+</div>
+
+<!-- ══ Panel flotante de acciones (Informe / Guardar / Guardados) — estilo EcoEstrés ══ -->
+<div style="position:fixed;right:16px;top:50%;
+  transform:translateY(-50%);
+  display:flex;flex-direction:column;gap:8px;
+  z-index:100;">
+  <button onclick="generarInforme()"
+    style="background:#E11D48;color:white;
+    border:none;border-radius:8px;
+    padding:10px 16px;font-size:13px;
+    font-weight:600;cursor:pointer;
+    white-space:nowrap;
+    box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+    📝 Informe
+  </button>
+  <button onclick="guardar()"
+    style="background:#9F1239;color:white;
+    border:none;border-radius:8px;
+    padding:10px 16px;font-size:13px;
+    font-weight:600;cursor:pointer;
+    white-space:nowrap;
+    box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+    💾 Guardar
+  </button>
+  <button onclick="abrirInformesGuardados()"
+    style="background:#15803D;color:white;
+    border:none;border-radius:8px;
+    padding:10px 16px;font-size:13px;
+    font-weight:600;cursor:pointer;
+    white-space:nowrap;
+    box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+    📋 Guardados
+  </button>
 </div>
 
 </body>
