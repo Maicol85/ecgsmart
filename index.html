@@ -1146,24 +1146,42 @@ async function analyzeOneImage(image) {
 
   const prompt = `${calibInfo}Analizás UNA imagen que forma parte de un electrocardiograma (ECG) de 12 derivaciones (foto o escaneo). La imagen puede contener TODAS las derivaciones o solo ALGUNAS.
 
-MUY IMPORTANTE — disposición en tiras horizontales:
-Un ECG de 12 derivaciones casi siempre está organizado en TIRAS HORIZONTALES (bandas que ocupan todo el ancho de la imagen). Puede venir en:
-- 1 tira: las 12 derivaciones (o las presentes) en una sola banda.
-- 2 tiras horizontales separadas (una arriba y otra abajo), típicamente 6 derivaciones por tira.
-- 3 tiras horizontales separadas, típicamente 4 derivaciones por tira (formato clásico 3x4: I aVR V1 V4 / II aVL V2 V5 / III aVF V3 V6).
-Estas tiras suelen estar separadas por espacios en blanco o líneas, y NO siempre están perfectamente alineadas ni tienen el mismo alto.
+REGLAS CRÍTICAS PARA EL RECORTE:
 
-Procedé en DOS PASOS y en este orden:
-PASO 1 — Identificá primero CUÁNTAS tiras horizontales hay (1, 2 o 3) y en qué franja vertical de la imagen está cada una (su rango 'y' aproximado). No asumas una sola banda: mirá si hay 2 o 3 bandas separadas.
-PASO 2 — Recién después, dentro de CADA tira, ubicá las derivaciones individuales de izquierda a derecha por su etiqueta, y asigná a cada una su recorte.
+La imagen que recibís es una FOTO de un ECG impreso en papel. Puede estar inclinada, con sombras, reflejos o mal encuadrada. Eso es normal.
 
-Derivaciones posibles: I, II, III, aVR, aVL, aVF, V1, V2, V3, V4, V5, V6.
+PASO 1 — Orientación y tiras:
+Identificá cuántas tiras horizontales hay:
+- 1 tira: todas las derivaciones en una banda
+- 2 tiras: típicamente miembros arriba (I,II,III,aVR,aVL,aVF) y precordiales abajo (V1-V6)
+- 3 tiras: formato clásico 4 derivaciones por tira
 
-Tarea:
-1. Detectá SOLO las derivaciones realmente presentes y legibles en ESTA imagen, ubicándolas dentro de su tira correspondiente (PASO 1 → PASO 2). Para cada una, indicá las coordenadas de recorte (fracciones 0-1 respecto del ancho/alto TOTAL de la imagen: x, y = esquina superior izquierda; w, h = ancho/alto) que encierren ese trazado completo con su etiqueta, y una "quality" de 0 a 1 que refleje qué tan nítida/completa está esa derivación.
-   Usá PROPORCIONES RELATIVAS CONSERVADORAS: NO recortes demasiado justo. Dejá un margen holgado alrededor de cada trazado (agregá aproximadamente un 8-12% extra de ancho y de alto respecto del contenido estricto) para tolerar fotos imperfectas, torcidas o mal encuadradas. Es preferible que el recorte incluya un poco de más antes que cortar parte del trazado o su etiqueta. El alto de cada recorte debe cubrir el alto completo de la tira que contiene esa derivación.
-2. Estimá las mediciones si el trazado lo permite: frecuencia cardíaca (lpm), intervalo PR (ms), duración QRS (ms), QT y QTc (ms), y eje eléctrico (grados). Dejá "" lo que no puedas estimar.
-3. ${instrInforme}
+Para cada tira, anotá su rango vertical aproximado (y_inicio y y_fin como fracción 0-1 de la imagen total).
+
+PASO 2 — Recorte de cada derivación:
+Dentro de cada tira, identificá cada derivación por su etiqueta (I, II, III, aVR, aVL, aVF, V1-V6).
+
+Para las coordenadas de recorte:
+- x: inicio horizontal de esa derivación (fracción 0-1)
+- y: inicio vertical — usar el y_inicio de la tira, NO el centro del trazado
+- w: ancho que ocupa esa derivación horizontalmente
+- h: alto completo de la tira, NO solo el trazado
+
+MÁRGENES OBLIGATORIOS:
+- Agregar 10% extra en cada lado (x -= 0.05, w += 0.10 pero sin salir de 0-1)
+- El alto h debe cubrir el alto COMPLETO de la tira incluyendo la etiqueta
+- Es MUCHO MEJOR recortar de más que de menos
+
+QUALITY:
+- 0.9: derivación perfectamente visible y completa
+- 0.7: visible con algo de ruido o inclinación
+- 0.5: parcialmente visible
+- 0.3: muy difícil de leer
+- No incluir derivaciones con quality < 0.3
+
+Además del recorte, completá estas tareas:
+- Estimá las mediciones si el trazado lo permite: frecuencia cardíaca (lpm), intervalo PR (ms), duración QRS (ms), QT y QTc (ms), y eje eléctrico (grados). Dejá "" lo que no puedas estimar.
+- ${instrInforme}
 
 Respondé ÚNICAMENTE con JSON válido, sin texto extra ni markdown. Incluí en "leads" SOLO las derivaciones presentes:
 {
