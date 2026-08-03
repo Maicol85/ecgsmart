@@ -1516,6 +1516,37 @@ function fmtFecha(val) {
   return val;
 }
 
+function makeHeaderBgDataURL(W, H) {
+  const cv = document.createElement('canvas');
+  const scale = 3.78;
+  cv.width = W * scale;
+  cv.height = H * scale;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#1E293B';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  const midY = cv.height * 0.6;
+  const pts = [
+    [0,0],[0.08,0],[0.10,-0.4],[0.12,0.4],
+    [0.14,0],[0.28,0],[0.30,-0.6],[0.32,0.6],
+    [0.34,0],[0.48,0],[0.50,-0.35],[0.52,0.35],
+    [0.54,0],[0.68,0],[0.70,-0.5],[0.72,0.5],
+    [0.74,0],[0.88,0],[0.90,-0.3],[0.92,0.3],
+    [0.94,0],[1.0,0]
+  ];
+  ctx.beginPath();
+  pts.forEach(([xR,yR],i) => {
+    const x = xR * cv.width;
+    const y = midY + yR * cv.height * 0.35;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  return cv.toDataURL('image/png');
+}
+
 function exportPDF() {
   if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) { showError('No se pudo cargar el generador de PDF.'); return; }
   const { jsPDF } = window.jspdf;
@@ -1524,9 +1555,15 @@ function exportPDF() {
   const mL = 12, mR = 198, pgW = 186, W = 210;
   let y = 0;
 
-  // ── Encabezado (estilo EcoSmart, fondo = color del tema seleccionado) ──
-  doc.setFillColor(ACC[0], ACC[1], ACC[2]);
-  doc.rect(0, 0, W, 22, 'F');
+  // ── Encabezado (fondo con línea ECG decorativa) ──
+  const hdrH = 22;
+  try {
+    const hdrImg = makeHeaderBgDataURL(W, hdrH);
+    doc.addImage(hdrImg, 'PNG', 0, 0, W, hdrH);
+  } catch(e) {
+    doc.setFillColor(30,41,59);
+    doc.rect(0, 0, W, hdrH, 'F');
+  }
 
   // Logo si existe (esquina superior derecha)
   const logo = localStorage.getItem('ecgsmart_logo');
@@ -1536,15 +1573,10 @@ function exportPDF() {
   doc.setFont('helvetica','bold');
   doc.setFontSize(16);
   doc.setTextColor(255,255,255);
-  doc.text('Informe Electrocardiograma', W/2, 10, { align: 'center' });
+  doc.text('Informe Electrocardiograma', W/2, 9, { align:'center' });
 
-  // Subtítulo
+  // Datos del médico centrados — SIN subtítulo
   doc.setFont('helvetica','normal');
-  doc.setFontSize(9);
-  doc.setTextColor(148,163,184);
-  doc.text('Electrocardiograma de 12 derivaciones', W/2, 16, { align: 'center' });
-
-  // Datos del médico a la izquierda
   doc.setFontSize(8);
   doc.setTextColor(203,213,225);
   const medNombre = sv('med-nombre') || '';
@@ -1553,79 +1585,86 @@ function exportPDF() {
   let medLine = medNombre;
   if (medMat) medLine += '  ·  Mat. ' + medMat;
   if (medLugar) medLine += '  ·  ' + medLugar;
-  doc.text(medLine, mL, 20);
+  doc.text(medLine, W/2, 17, { align:'center' });
 
-  y = 26;  // inicio del contenido después del header
+  y = 25;
 
-  // ── Datos del paciente (tabla con bordes, estilo EcoSmart) ──
+  // ── Datos del paciente (diseño fino y discreto) ──
   doc.setFont('helvetica','bold');
   doc.setFontSize(10);
   doc.setTextColor(40,40,40);
-  doc.text('DATOS DEL PACIENTE', mL, y); y += 3;
-
-  // Línea separadora (color del tema)
-  doc.setDrawColor(ACC[0], ACC[1], ACC[2]);
+  doc.text('DATOS DEL PACIENTE', mL, y);
+  y += 2;
+  doc.setDrawColor(ACC[0],ACC[1],ACC[2]);
   doc.setLineWidth(0.4);
-  doc.line(mL, y, mR, y); y += 4;
+  doc.line(mL, y, mR, y);
+  y += 5;
 
-  // Datos del paciente
-  const pac  = document.getElementById('pac-nombre')?.value || '—';
-  const ci   = document.getElementById('pac-ci')?.value || '—';
-  const edad = document.getElementById('pac-edad')?.value || '—';
-  const sxv  = document.getElementById('pac-sexo')?.value || '';
-  const sexo = sxv==='M'?'Masculino':sxv==='F'?'Femenino':'—';
-  const fecha= fmtFecha(document.getElementById('pac-fecha')?.value||'');
-  const dc   = document.getElementById('pac-dc')?.value || '—';
+  // Leer datos
+  const pac   = document.getElementById('pac-nombre')?.value || '—';
+  const ci    = document.getElementById('pac-ci')?.value || '—';
+  const edad  = document.getElementById('pac-edad')?.value || '—';
+  const sxv   = document.getElementById('pac-sexo')?.value || '';
+  const sexo  = sxv==='M'?'Masculino':sxv==='F'?'Femenino':'—';
+  const fecha = fmtFecha(document.getElementById('pac-fecha')?.value||'');
+  const dc    = document.getElementById('pac-dc')?.value || '—';
+  const calib = getCalib ? getCalib() : {velocidad:25,voltaje:10};
+  const tecnica = calib.velocidad+' mm/s · '+calib.voltaje+' mm/mV · AC 50Hz';
 
-  // Tabla fila 1 — 5 celdas [label, valor, anchoMM, líneas máx]
-  const celdas1 = [
-    { l:'Nombre', v: pac,   w: 60, lineas: 2 },
-    { l:'Edad',   v: edad + ' años', w: 25 },
-    { l:'Sexo',   v: sexo,  w: 30 },
-    { l:'CI/CPF', v: ci,    w: 40 },
-    { l:'Fecha',  v: fecha, w: 27 },
+  // Fila 1: Paciente | CI/CPF | Edad | Sexo | Fecha
+  const cols1 = [
+    { l:'Paciente', v:pac,          w:60 },
+    { l:'CI / CPF', v:ci,           w:38 },
+    { l:'Edad',     v:edad+' años', w:22 },
+    { l:'Sexo',     v:sexo,         w:28 },
+    { l:'Fecha',    v:fecha,        w:34 },
   ];
-
   let cx = mL;
-  const cellH1 = 16;   // fila 1 más alta: permite 2 líneas en el nombre
-  const cellH = 12;    // fila 2
-
-  // Dibujar celdas fila 1 (el nombre puede ocupar hasta 2 líneas)
-  celdas1.forEach(c => {
-    doc.setDrawColor(200,200,200); doc.setLineWidth(0.2);
-    doc.rect(cx, y, c.w, cellH1);
-    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
-    doc.text(c.l, cx+2, y+4);
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(30,30,30);
-    const maxW = c.w - 4;
-    const lineas = doc.splitTextToSize(c.v, maxW).slice(0, c.lineas || 1);
-    lineas.forEach((ln, i) => doc.text(ln, cx+2, y+9 + i*4));
+  cols1.forEach(c => {
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7);
+    doc.setTextColor(140,140,140);
+    doc.text(c.l, cx, y);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(9);
+    doc.setTextColor(30,30,30);
+    const lines = doc.splitTextToSize(c.v, c.w-2);
+    doc.text(lines.slice(0,2), cx, y+4);
     cx += c.w;
   });
-  y += cellH1;
+  y += 10;
 
-  // Fila 2 — DC y técnica
-  const calib = getCalib ? getCalib() : {velocidad:25, voltaje:10};
-  const tecnica = 'Técnica: ' + calib.velocidad + ' mm/s · ' + calib.voltaje + ' mm/mV · AC 50Hz';
+  // Separador fino entre filas
+  doc.setDrawColor(220,220,220);
+  doc.setLineWidth(0.2);
+  doc.line(mL, y, mR, y);
+  y += 3;
 
-  const celdas2 = [
-    { l:'Dato clínico / Motivo', v: dc,      w: 120 },
-    { l:'Técnica',               v: tecnica, w: 62  },
+  // Fila 2: DC | Técnica
+  const cols2 = [
+    { l:'Dato clínico / Motivo', v:dc,      w:118 },
+    { l:'Técnica',               v:tecnica, w:64  },
   ];
-
   cx = mL;
-  celdas2.forEach(c => {
-    doc.setDrawColor(200,200,200); doc.setLineWidth(0.2);
-    doc.rect(cx, y, c.w, cellH);
-    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
-    doc.text(c.l, cx+2, y+4);
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(30,30,30);
-    const maxW = c.w - 4;
-    const txt = doc.splitTextToSize(c.v, maxW)[0] || '';
-    doc.text(txt, cx+2, y+9);
+  cols2.forEach(c => {
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7);
+    doc.setTextColor(140,140,140);
+    doc.text(c.l, cx, y);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(9);
+    doc.setTextColor(30,30,30);
+    const lines = doc.splitTextToSize(c.v, c.w-2);
+    doc.text(lines[0]||'', cx, y+4);
     cx += c.w;
   });
-  y += cellH + 5;
+  y += 10;
+
+  // Línea de cierre
+  doc.setDrawColor(ACC[0],ACC[1],ACC[2]);
+  doc.setLineWidth(0.4);
+  doc.line(mL, y, mR, y);
+  y += 6;
 
   // ── ECG: grilla de recortes (normal) o imagen original completa (sin editar) ──
   y += 4;
@@ -1694,11 +1733,10 @@ function exportPDF() {
 
   if ((hayMediciones || report) && y + 24 > 285) { doc.addPage(); y = 14; }
   const yInicioBloque = y;
-  const infAncho = hayMediciones ? pgW - 57 : pgW;  // ancho columna informe
-  const measX = mR - 52;                            // inicio columna mediciones
+  const infAncho = hayMediciones ? pgW - 57 : pgW;  // ancho columna informe (reducido si hay mediciones)
   let measBottom = yInicioBloque;
 
-  // Tabla de mediciones apiladas a la derecha (cuando hay valores reales)
+  // Tabla de mediciones con recuadro a la derecha (cuando hay valores reales)
   if (hayMediciones) {
     const meds = [
       { label: 'FC',     val: fcVal,  unit: 'lpm' },
@@ -1707,14 +1745,49 @@ function exportPDF() {
       { label: 'QT/QTc', val: qtVal,  unit: 'ms' },
       { label: 'EJE',    val: ejeVal, unit: '°' },
     ];
-    let yM = yInicioBloque;
-    meds.forEach(m => {
+    const measX = mR - 52;
+    const measW = 52;
+    let yM = y;
+
+    // Header de la tabla
+    doc.setFillColor(ACC[0],ACC[1],ACC[2]);
+    doc.rect(measX, yM, measW, 7, 'F');
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(7);
+    doc.setTextColor(255,255,255);
+    doc.text('MEDICIONES', measX + measW/2, yM + 4.5, { align:'center' });
+    yM += 7;
+
+    const yTablaInicio = yM;
+
+    // Filas de mediciones (fondo alternado)
+    meds.forEach((m, i) => {
       if (!m.val) return;
-      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
-      doc.text(m.label, measX, yM); yM += 3.5;
-      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
-      doc.text(m.val + ' ' + m.unit, measX, yM); yM += 6;
+      if (i % 2 === 0) {
+        doc.setFillColor(245,250,252);
+        doc.rect(measX, yM, measW, 10, 'F');
+      }
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(7);
+      doc.setTextColor(ACC[0],ACC[1],ACC[2]);
+      doc.text(m.label, measX + 2, yM + 4);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(9);
+      doc.setTextColor(30,30,30);
+      doc.text(m.val, measX + 2, yM + 9);
+      const vW = doc.getTextWidth(m.val);  // medir con la fuente del valor (bold 9)
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(6);
+      doc.setTextColor(150,150,150);
+      doc.text(m.unit, measX + 2 + vW + 1, yM + 9);
+      yM += 10;
     });
+
+    // Borde exterior
+    doc.setDrawColor(ACC[0],ACC[1],ACC[2]);
+    doc.setLineWidth(0.3);
+    doc.rect(measX, y, measW, yM - y);
+
     measBottom = yM;
   }
 
