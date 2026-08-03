@@ -1625,39 +1625,49 @@ function exportPDF() {
 
   // ── Mediciones (columna derecha) + Informe (columna izquierda) ──
   const report = document.getElementById('reportText').value.trim();
-  if ((S.usoIA || report) && y + 24 > 285) { doc.addPage(); y = 14; }
+
+  // Detectar mediciones por el VALOR REAL de los campos, no por la bandera S.usoIA
+  // (que puede quedar en false al editar un informe guardado, usar Vista previa o el preinforme).
+  const fcVal  = (document.getElementById('meas-fc')  || {}).value || '';
+  const prVal  = (document.getElementById('meas-pr')  || {}).value || '';
+  const qrsVal = (document.getElementById('meas-qrs') || {}).value || '';
+  const qtVal  = (document.getElementById('meas-qt')  || {}).value || '';
+  const ejeVal = (document.getElementById('meas-eje') || {}).value || '';
+  const hayMediciones = fcVal || prVal || qrsVal || qtVal || ejeVal;
+
+  if ((hayMediciones || report) && y + 24 > 285) { doc.addPage(); y = 14; }
   const yInicioBloque = y;
-  const infW = 120;          // ancho columna informe
-  const measX = mL + 125;    // inicio columna mediciones
-  const measW = mR - measX;  // ancho columna mediciones
+  const infAncho = hayMediciones ? pgW - 57 : pgW;  // ancho columna informe
+  const measX = mR - 52;                            // inicio columna mediciones
   let measBottom = yInicioBloque;
 
-  // Tabla de mediciones apiladas a la derecha (solo con IA)
-  if (S.usoIA) {
-    const meas = [
-      { label: 'FC',     val: document.getElementById('meas-fc').value  || '—', unit: 'lpm' },
-      { label: 'PR',     val: document.getElementById('meas-pr').value  || '—', unit: 'ms' },
-      { label: 'QRS',    val: document.getElementById('meas-qrs').value || '—', unit: 'ms' },
-      { label: 'QT/QTc', val: document.getElementById('meas-qt').value  || '—', unit: 'ms' },
-      { label: 'EJE',    val: document.getElementById('meas-eje').value || '—', unit: '°' },
+  // Tabla de mediciones apiladas a la derecha (cuando hay valores reales)
+  if (hayMediciones) {
+    const meds = [
+      { label: 'FC',     val: fcVal,  unit: 'lpm' },
+      { label: 'PR',     val: prVal,  unit: 'ms' },
+      { label: 'QRS',    val: qrsVal, unit: 'ms' },
+      { label: 'QT/QTc', val: qtVal,  unit: 'ms' },
+      { label: 'EJE',    val: ejeVal, unit: '°' },
     ];
     let yM = yInicioBloque;
-    meas.forEach(m => {
+    meds.forEach(m => {
+      if (!m.val) return;
       doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
-      doc.text(m.label, measX, yM); yM += 4;
-      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(40,40,40);
-      doc.text(m.val + ' ' + m.unit, measX, yM); yM += 7;
+      doc.text(m.label, measX, yM); yM += 3.5;
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40);
+      doc.text(m.val + ' ' + m.unit, measX, yM); yM += 6;
     });
     measBottom = yM;
   }
 
-  // ── Informe (cuerpo) en columna izquierda (ancho infW) ──
+  // ── Informe (cuerpo) en columna izquierda (ancho infAncho) ──
   let concLines = [];
   if (report) {
     y = yInicioBloque;
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(40,40,40);
     doc.text('INFORME', mL, y); y += 4;
-    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mL + infW, y); y += 3;
+    doc.setDrawColor(ACC[0],ACC[1],ACC[2]); doc.setLineWidth(0.4); doc.line(mL, y, mL + infAncho, y); y += 3;
 
     // Separar conclusión (se imprime aparte, a ancho completo, más abajo)
     const reportLines = (document.getElementById('reportText').value || '').split('\n');
@@ -1668,7 +1678,7 @@ function exportPDF() {
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(50,50,50);
     bodyLines.forEach(linea => {
       if (!linea.trim()) { y += 1.5; return; }
-      const wrapped = doc.splitTextToSize(linea, infW);
+      const wrapped = doc.splitTextToSize(linea, infAncho);
       wrapped.forEach(ln => { if (y > 282) { doc.addPage(); y = 14; } doc.text(ln, mL, y); y += 3.5; });
     });
     y += 3;
