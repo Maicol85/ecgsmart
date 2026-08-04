@@ -33,10 +33,20 @@
   /* ── Estándar móvil: título compacto + ⋮ acciones · botones al pie (≤768px) ── */
   .ecg-kebab{display:none;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:7px;font-size:19px;line-height:1;padding:4px 11px;cursor:pointer;flex-shrink:0}
   .ecg-foot{position:fixed;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;z-index:100}
+  /* Panel de datos del médico (patrón CeiboMed): sin cascada visible en el header */
+  .hdr-titlewrap{flex-shrink:0}
+  .hdr-med-wrap{position:relative;display:inline-flex;align-items:center;gap:6px;flex-shrink:0}
+  .hdr-medbtn{white-space:nowrap}
+  .hdr-med-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:400;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;box-shadow:0 12px 40px rgba(0,0,0,.5);min-width:300px;max-width:min(440px,92vw);max-height:78vh;overflow:auto}
+  .hmp-title{font-size:11px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px}
+  .hdr-med-panel .hdr-sub,.hdr-med-panel .hdr-extra{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:12px;color:var(--text2);margin:0 0 8px;white-space:normal;max-width:none;overflow:visible;line-height:1.9}
+  .hmp-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text);margin-top:6px;padding-top:10px;border-top:1px solid var(--border)}
+  .hmp-toggle input{width:15px;height:15px;cursor:pointer}
+  .hmp-hint{color:var(--text2);font-size:11px}
   @media(max-width:768px){
     header{flex-wrap:nowrap;position:relative;gap:8px}
     #logo-centro-wrap{display:none!important}
-    .hdr-sub,.hdr-extra{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52vw}
+    .hdr-med-panel{position:fixed;left:8px;right:8px;top:var(--hdr-h,58px);min-width:0;max-width:none}
     .ecg-kebab{display:inline-flex;align-items:center;margin-left:auto}
     #ecgHdrBtns{display:none;position:absolute;top:100%;right:6px;flex-direction:column;align-items:stretch;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;box-shadow:0 12px 34px rgba(0,0,0,.45);z-index:300;min-width:214px;max-height:80vh;overflow:auto}
     #ecgHdrBtns.open{display:flex}
@@ -206,8 +216,14 @@
 <!-- ══ HEADER (faithfully reused from index.html, adapted to ECGsmart) ══ -->
 <header>
   <div class="hdr-icon">🫀</div>
-  <div>
+  <div class="hdr-titlewrap">
     <div class="hdr-title">ECG <span>Smart</span></div>
+  </div>
+  <div class="hdr-med-wrap">
+    <button type="button" class="btn btn-ghost hdr-medbtn" id="hdr-med-btn" onclick="ecgMedToggle()" aria-expanded="false" title="Datos del médico (editar)">✏️ Médico</button>
+    <button type="button" class="btn btn-ghost hdr-medbtn" id="hdr-centro-btn" onclick="ecgCentroBtn()" title="Centro / Institución (encabezado del informe)">🏥 Centro</button>
+    <div id="hdr-med-panel" class="hdr-med-panel" style="display:none">
+      <div class="hmp-title">👨‍⚕️ Datos del médico</div>
     <div class="hdr-sub">
       <!-- hidden contenteditable spans keep sv() and saveMedico() working -->
       <span id="med-nombre" contenteditable="true" onblur="saveMedico()" style="display:none;">Dr. Maicol Dos Santos</span>
@@ -243,6 +259,8 @@
     <div class="hdr-sub hdr-extra" id="hdr-extra">
       <span id="hdr-esp-item"><span id="med-especialidad" class="hdr-extra-field" contenteditable="true" data-placeholder="Especialidad" title="Click para editar especialidad" onclick="this.focus()" onblur="saveMedico()" style="cursor:pointer;border-bottom:1px dashed var(--accent2);outline:none;"></span></span><span id="hdr-sep-1" class="hdr-sep">&nbsp;·&nbsp;</span><span id="hdr-dir-item"><span id="med-direccion" class="hdr-extra-field" contenteditable="true" data-placeholder="Dirección del consultorio" title="Click para editar dirección" onclick="this.focus()" onblur="saveMedico()" style="cursor:pointer;border-bottom:1px dashed var(--accent2);outline:none;"></span></span><span id="hdr-sep-2" class="hdr-sep">&nbsp;·&nbsp;</span><span id="hdr-tel-item"><span id="med-telefono" class="hdr-extra-field" contenteditable="true" data-placeholder="Teléfono" title="Click para editar teléfono" onclick="this.focus()" onblur="saveMedico()" style="cursor:pointer;border-bottom:1px dashed var(--accent2);outline:none;"></span></span>
     </div>
+      <label class="hmp-toggle"><input type="checkbox" id="modo-inst-chk" onchange="setModoInstitucional(this.checked)"> 🏛️ Modo institucional <span class="hmp-hint">(PDF sin CeiboMed)</span></label>
+    </div>
   </div>
   <div id="logo-centro-wrap" onclick="logoClick(event)" title="Logo del centro (click para cargar)" style="position:relative;min-width:46px;height:40px;padding:0 6px;border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex-shrink:0;background:var(--bg2);margin-left:12px;">
     <div id="logo-centro-ph" style="display:flex;flex-direction:column;align-items:center;line-height:1.1;color:var(--text2);font-size:9px;gap:1px;"><span style="font-size:15px;">＋</span>Logo</div>
@@ -273,7 +291,6 @@
     </button>
     <button class="btn btn-ghost" id="theme-toggle-btn" onclick="toggleTheme()" title="Cambiar modo día/noche">🌙 Noche</button>
     <button class="btn btn-ghost" onclick="limpiar()">🗑 Limpiar</button>
-    <button class="btn btn-ghost" id="btn-centro" onclick="hdrEdit('med-centro')" title="Centro / Institución (encabezado del informe)">🏥 Centro</button>
     <span style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;">
       <button class="btn btn-green" onclick="exportPDF()">⬇️ PDF</button>
       <span style="display:inline-flex;gap:4px;" title="Color del PDF">
@@ -289,9 +306,6 @@
         <option value="1">Paciente_ECG_Fecha</option>
         <option value="2">ECG_Fecha</option>
       </select>
-      <label id="modo-inst-wrap" title="Modo institucional: el PDF muestra la institución en vez de CeiboMed" style="display:inline-flex;align-items:center;gap:5px;font-size:9px;color:var(--text2);cursor:pointer;margin-top:2px;">
-        <input type="checkbox" id="modo-inst-chk" onchange="setModoInstitucional(this.checked)" style="width:13px;height:13px;cursor:pointer;"> 🏛️ Modo institucional
-      </label>
     </span>
     <button onclick="abrirAyuda()" title="Ayuda"
       style="background:none;
@@ -603,6 +617,27 @@ function restoreModoInstitucional(){
   const chk = document.getElementById('modo-inst-chk');
   if (chk) chk.checked = on;
 }
+/* Panel de datos del médico (patrón CeiboMed) */
+function ecgMedToggle(){
+  const p = document.getElementById('hdr-med-panel'), b = document.getElementById('hdr-med-btn');
+  if (!p) return;
+  const show = (p.style.display === 'none' || !p.style.display);
+  p.style.display = show ? 'block' : 'none';
+  if (b) b.setAttribute('aria-expanded', show ? 'true' : 'false');
+}
+/* Botón "🏥 Centro": abre el panel y edita el centro/institución (med-centro) */
+function ecgCentroBtn(){
+  const p = document.getElementById('hdr-med-panel'); if (p) p.style.display = 'block';
+  const b = document.getElementById('hdr-med-btn'); if (b) b.setAttribute('aria-expanded','true');
+  if (typeof hdrEdit === 'function') hdrEdit('med-centro');
+}
+window.ecgMedToggle = ecgMedToggle; window.ecgCentroBtn = ecgCentroBtn;
+/* Cerrar el panel al hacer click fuera */
+document.addEventListener('click', function(e){
+  const w = document.querySelector('.hdr-med-wrap'), p = document.getElementById('hdr-med-panel');
+  if (!w || !p || p.style.display === 'none') return;
+  if (!w.contains(e.target)) { p.style.display = 'none'; const b = document.getElementById('hdr-med-btn'); if (b) b.setAttribute('aria-expanded','false'); }
+});
 
 /* ══ INIT ══ */
 document.addEventListener('DOMContentLoaded', () => {
