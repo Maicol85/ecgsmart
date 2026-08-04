@@ -30,6 +30,19 @@
   .hdr-extra-field[contenteditable]:empty::before { content: attr(data-placeholder); opacity: 0.4; pointer-events: none; font-style: italic; }
   header .spacer { flex: 1; }
   .hdr-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  /* ── Estándar móvil: título compacto + ⋮ acciones · botones al pie (≤768px) ── */
+  .ecg-kebab{display:none;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:7px;font-size:19px;line-height:1;padding:4px 11px;cursor:pointer;flex-shrink:0}
+  .ecg-foot{position:fixed;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;z-index:100}
+  @media(max-width:768px){
+    header{flex-wrap:nowrap;position:relative;gap:8px}
+    #logo-centro-wrap{display:none!important}
+    .hdr-sub,.hdr-extra{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52vw}
+    .ecg-kebab{display:inline-flex;align-items:center;margin-left:auto}
+    #ecgHdrBtns{display:none;position:absolute;top:100%;right:6px;flex-direction:column;align-items:stretch;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;box-shadow:0 12px 34px rgba(0,0,0,.45);z-index:300;min-width:214px;max-height:80vh;overflow:auto}
+    #ecgHdrBtns.open{display:flex}
+    /* Botones Informe/Guardar/Guardados al pie del contenido, no flotantes laterales */
+    .ecg-foot{position:static;transform:none;flex-direction:row;flex-wrap:wrap;justify-content:center;gap:10px;max-width:560px;margin:30px auto 24px;padding-top:18px;border-top:1px solid var(--border)}
+  }
   .btn { padding: 6px 14px; border-radius: 7px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: opacity .15s; }
   .btn:hover { opacity: .85; }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
@@ -238,7 +251,8 @@
   </div>
   <input type="file" id="logo-centro-file" accept="image/*" style="display:none" onchange="logoChosen(event)">
   <div class="spacer"></div>
-  <div class="hdr-btns">
+  <button class="ecg-kebab" aria-label="Más acciones" onclick="document.getElementById('ecgHdrBtns').classList.toggle('open')">⋮</button>
+  <div class="hdr-btns" id="ecgHdrBtns">
     <button onclick="exportarJSON()"
       style="background:none;
       border:1px solid rgba(255,255,255,0.15);
@@ -2170,10 +2184,7 @@ window.abrirAyuda = abrirAyuda; window.cerrarAyuda = cerrarAyuda; window.renderA
 </div>
 
 <!-- ══ Panel flotante de acciones (Informe / Guardar / Guardados) — estilo EcoEstrés ══ -->
-<div style="position:fixed;right:16px;top:50%;
-  transform:translateY(-50%);
-  display:flex;flex-direction:column;gap:8px;
-  z-index:100;">
+<div class="ecg-foot">
 
   <button onclick="generarInforme()"
     style="background:#0369A1;color:white;
