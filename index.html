@@ -1939,10 +1939,11 @@ function exportPDF() {
 
   // ── Copyright en todas las páginas ──
   const tot = doc.internal.getNumberOfPages();
+  const _mi = localStorage.getItem('ecgsmart_modo_institucional')==='1';
   for (let p = 1; p <= tot; p++) {
     doc.setPage(p);
     doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(150,150,150);
-    doc.text('© 2026 Dr. M. D. S. y col. · ECGsmart · Todos los derechos reservados · Uso clínico exclusivo', 105, 292, { align: 'center' });
+    doc.text((_mi&&inst)?('© 2026 '+inst+' · Todos los derechos reservados · Uso clínico exclusivo'):'© 2026 Dr. M. D. S. y col. · ECGsmart · Todos los derechos reservados · Uso clínico exclusivo', 105, 292, { align: 'center' });
   }
 
   doc.save(pdfFilename());
